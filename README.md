@@ -116,5 +116,18 @@ Here is exactly how we implement the security stack:
 - **Network**: LiveKit (WebRTC)
 - **Protocol**: Protobuf
 
+## ✅ Testing
+
+- Run unit/widget tests:
+  - `flutter test`
+- Run deterministic integration smoke tests (no network):
+  - `flutter test integration_test/smoke`
+- Run optional backend E2E smoke test (requires token endpoint + LiveKit):
+  1. Choose a reachable backend room name and identity.
+  2. Run:
+     - `flutter test integration_test/e2e/backend_connect_smoke_test.dart --dart-define=COHRTZ_E2E_ENABLED=true --dart-define=COHRTZ_E2E_ROOM=<room> --dart-define=COHRTZ_E2E_IDENTITY=<identity>`
+  3. Troubleshooting:
+     - If you see `All tests skipped`, one or more required `--dart-define` values were not provided.
+
 ## 📄 License
 AGPL-3.0

@@ -14,9 +14,30 @@ import 'package:cohortz/shared/services/background_service.dart';
 import 'package:cohortz/shared/utils/logging_service.dart';
 import 'package:cohortz/slices/sync/runtime/crdt_service.dart';
 
-Future<ProviderScope> createAppProviderScope({required Widget child}) async {
+class AppBootstrapOptions {
+  const AppBootstrapOptions({
+    this.initializeBackgroundService = AppConfig.enableBackgroundService,
+    this.initializeSecurity = true,
+    this.initializeCrdt = true,
+    this.providerOverrides = const <dynamic>[],
+  });
+
+  final bool initializeBackgroundService;
+  final bool initializeSecurity;
+  final bool initializeCrdt;
+  final List<dynamic> providerOverrides;
+}
+
+Future<ProviderScope> createAppProviderScope({
+  required Widget child,
+  AppBootstrapOptions? options,
+}) async {
+  final resolvedOptions = options ?? const AppBootstrapOptions();
+
   Log.i('Main', 'Initializing critical services...');
-  await initializeBackgroundService(enabled: AppConfig.enableBackgroundService);
+  await initializeBackgroundService(
+    enabled: resolvedOptions.initializeBackgroundService,
+  );
   final crdtService = CrdtService();
   final identityService = IdentityService();
   final securityService = SecurityService();
@@ -26,19 +47,28 @@ Future<ProviderScope> createAppProviderScope({required Widget child}) async {
   final prefs = await SharedPreferences.getInstance();
   final transferStatsRepo = TransferStatsRepository(prefs);
 
-  Log.i('Main', 'Initializing IdentityService...');
-  await identityService.initialize();
-  Log.i('Main', 'Initializing SecurityService...');
-  await securityService.initialize();
+  if (resolvedOptions.initializeSecurity) {
+    Log.i('Main', 'Initializing IdentityService...');
+    await identityService.initialize();
+    Log.i('Main', 'Initializing SecurityService...');
+    await securityService.initialize();
 
-  Log.i('Main', 'Linking Public Key to Identity...');
-  final pubKey = await securityService.getPublicKey();
-  await identityService.updatePublicKey(base64Encode(pubKey));
+    Log.i('Main', 'Linking Public Key to Identity...');
+    final pubKey = await securityService.getPublicKey();
+    await identityService.updatePublicKey(base64Encode(pubKey));
+  } else {
+    Log.i('Main', 'Skipping security bootstrap (test/runtime override).');
+  }
 
-  Log.i('Main', 'Initializing CrdtService default node...');
-  final nodeId =
-      identityService.profile?.id ?? 'unknown_boot_${const Uuid().v4()}';
-  await crdtService.initialize(nodeId, 'default');
+  if (resolvedOptions.initializeCrdt) {
+    Log.i('Main', 'Initializing CrdtService default node...');
+    final nodeId =
+        identityService.profile?.id ?? 'unknown_boot_${const Uuid().v4()}';
+    await crdtService.initialize(nodeId, 'default');
+  } else {
+    Log.i('Main', 'Skipping CRDT bootstrap (test/runtime override).');
+  }
+
   Log.i('Main', 'Initialization complete. Running App.');
 
   return ProviderScope(
@@ -47,6 +77,7 @@ Future<ProviderScope> createAppProviderScope({required Widget child}) async {
       identityServiceProvider.overrideWith((ref) => identityService),
       encryptionServiceProvider.overrideWithValue(encryptionService),
       transferStatsRepositoryProvider.overrideWithValue(transferStatsRepo),
+      ...resolvedOptions.providerOverrides,
     ],
     child: child,
   );
