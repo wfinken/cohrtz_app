@@ -20,8 +20,7 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
 
   String _resolveUserKey() {
     final syncId = ref.read(syncServiceProvider).identity;
-    final profileId = ref.read(identityServiceProvider).profile?.id;
-    final resolved = syncId ?? profileId ?? '';
+    final resolved = syncId ?? '';
     return resolved.isEmpty ? 'default' : resolved;
   }
 
@@ -36,10 +35,7 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
       createdAt: time.getAdjustedTimeLocal(),
       logicalTime: time.nextLogicalTime(),
       dataRoomName: roomName,
-      ownerId:
-          syncService.identity ??
-          ref.read(identityServiceProvider).profile?.id ??
-          '',
+      ownerId: syncService.identity ?? '',
     );
   }
 

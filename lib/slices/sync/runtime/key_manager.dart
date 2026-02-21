@@ -18,7 +18,7 @@ class KeyManager {
   final EncryptionService _encryptionService;
   final SecureStorageService _secureStorage;
   final TreeKemHandler _treeKemHandler;
-  final String Function() getLocalParticipantId;
+  final String Function(String roomName) getLocalParticipantIdForRoom;
   final Future<void> Function(String roomName, P2PPacket packet) broadcast;
   final Iterable<String> Function(String roomName)? getRemoteParticipantIds;
   final Future<void> Function(
@@ -46,7 +46,7 @@ class KeyManager {
     required EncryptionService encryptionService,
     required SecureStorageService secureStorage,
     required TreeKemHandler treeKemHandler,
-    required this.getLocalParticipantId,
+    required this.getLocalParticipantIdForRoom,
     required this.broadcast,
     this.getRemoteParticipantIds,
     required this.sendSecure,
@@ -61,7 +61,7 @@ class KeyManager {
     final idsFn = getRemoteParticipantIds;
     if (idsFn == null) return false;
 
-    final localId = getLocalParticipantId();
+    final localId = getLocalParticipantIdForRoom(roomName);
     if (localId.isEmpty) return false;
 
     final all = <String>[
@@ -107,7 +107,7 @@ class KeyManager {
     final packet = P2PPacket()
       ..type = P2PPacket_PacketType.UNICAST_REQ
       ..requestId = const Uuid().v4()
-      ..senderId = getLocalParticipantId()
+      ..senderId = getLocalParticipantIdForRoom(roomName)
       ..payload = payload;
 
     await sendSecure(roomName, targetId, packet);
@@ -253,7 +253,7 @@ class KeyManager {
     final packet = P2PPacket()
       ..type = P2PPacket_PacketType.UNICAST_REQ
       ..requestId = const Uuid().v4()
-      ..senderId = getLocalParticipantId()
+      ..senderId = getLocalParticipantIdForRoom(roomName)
       ..payload = payload;
 
     await broadcast(roomName, packet);
@@ -297,7 +297,7 @@ class KeyManager {
     final packet = P2PPacket()
       ..type = P2PPacket_PacketType.UNICAST_REQ
       ..requestId = const Uuid().v4()
-      ..senderId = getLocalParticipantId()
+      ..senderId = getLocalParticipantIdForRoom(roomName)
       ..payload = payload;
 
     await sendSecure(roomName, targetId, packet);
@@ -442,7 +442,7 @@ class KeyManager {
     final packet = P2PPacket()
       ..type = P2PPacket_PacketType.UNICAST_REQ
       ..requestId = const Uuid().v4()
-      ..senderId = getLocalParticipantId()
+      ..senderId = getLocalParticipantIdForRoom(roomName)
       ..payload = payload;
 
     await broadcast(roomName, packet);

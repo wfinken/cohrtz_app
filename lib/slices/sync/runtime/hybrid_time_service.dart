@@ -81,8 +81,11 @@ class HybridTimeService {
     }
   }
 
-  P2PPacket buildSyncPing({required String peerId}) {
-    final localId = _getLocalParticipantId();
+  P2PPacket buildSyncPing({
+    required String peerId,
+    String? localParticipantId,
+  }) {
+    final localId = localParticipantId ?? _getLocalParticipantId();
     final payload = utf8.encode(
       jsonEncode(<String, Object?>{'type': 'SYNC_PING', 't0': perfNowMs()}),
     );
@@ -101,8 +104,9 @@ class HybridTimeService {
     required double t0,
     required double t1,
     required double t2,
+    String? localParticipantId,
   }) {
-    final localId = _getLocalParticipantId();
+    final localId = localParticipantId ?? _getLocalParticipantId();
     final payload = utf8.encode(
       jsonEncode(<String, Object?>{
         'type': 'SYNC_PONG',

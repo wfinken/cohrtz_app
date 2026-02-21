@@ -90,7 +90,7 @@ class FakeKeyManager extends KeyManager {
         encryptionService: FakeEncryptionService(),
         secureStorage: FakeSecureStorageService(),
         treeKemHandler: FakeTreeKemHandler(),
-        getLocalParticipantId: () => 'test-id',
+        getLocalParticipantIdForRoom: (_) => 'test-id',
         broadcast: (room, packet) async {},
         sendSecure: (room, target, packet) async {},
         getRemoteParticipantCount: (room) => 0,
@@ -102,7 +102,7 @@ class FakeInviteHandler extends InviteHandler {
   FakeInviteHandler()
     : super(
         crdtService: FakeCrdtService(),
-        getLocalParticipantId: () => 'test-id',
+        getLocalParticipantIdForRoom: (_) => 'test-id',
         broadcast: (room, packet) async {},
         getConnectedRoomNames: () => <String>{},
       );

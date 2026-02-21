@@ -10,11 +10,11 @@ import 'invite_handler_provider.dart';
 import 'sync_protocol_provider.dart';
 import 'treekem_handler_provider.dart';
 import 'key_manager_provider.dart';
-import 'node_id_provider.dart';
 import 'data_broadcaster_provider.dart';
 import 'connection_manager_provider.dart';
-import 'identity_provider.dart';
 import 'hybrid_time_provider.dart';
+import 'group_identity_provider.dart';
+import 'identity_provider.dart';
 
 final packetHandlerProvider = Provider<PacketHandler>((ref) {
   return PacketHandler(
@@ -29,7 +29,9 @@ final packetHandlerProvider = Provider<PacketHandler>((ref) {
     syncProtocol: ref.watch(syncProtocolProvider),
     treekemHandler: ref.watch(treekemHandlerProvider),
     keyManager: ref.watch(keyManagerProvider),
-    getLocalParticipantId: () => ref.read(nodeIdProvider),
+    getLocalParticipantIdForRoom: (roomName) => ref
+        .read(connectionManagerProvider)
+        .resolveLocalParticipantIdForRoom(roomName),
     broadcastConsistencyCheck: (room) =>
         ref.read(syncProtocolProvider).broadcastConsistencyCheck(room),
     sendSecurePacket: (room, target, packet) => ref
@@ -53,9 +55,31 @@ final packetHandlerProvider = Provider<PacketHandler>((ref) {
         ref.read(dataBroadcasterProvider).broadcast(room, packet),
     retryBroadcast: (room) =>
         ref.read(dataBroadcasterProvider).retryBufferedPackets(room),
-    getLocalUserProfileJson: () {
-      final profile = ref.read(identityServiceProvider).profile;
-      return profile?.toJson();
+    getLocalUserProfileJsonForRoom: (roomName) async {
+      final localId = ref
+          .read(connectionManagerProvider)
+          .resolveLocalParticipantIdForRoom(roomName);
+      if (localId.isEmpty) {
+        return null;
+      }
+      final identityService = ref.read(groupIdentityServiceProvider);
+      var profile = await identityService.loadForGroup(roomName);
+      if (profile == null) {
+        final globalName = ref
+            .read(identityServiceProvider)
+            .profile
+            ?.displayName
+            .trim();
+        if (globalName == null || globalName.isEmpty) {
+          return null;
+        }
+        profile = await identityService.ensureForGroup(
+          groupId: roomName,
+          displayName: globalName,
+          fallbackIdentity: localId,
+        );
+      }
+      return profile.toJson();
     },
   );
 });

@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -50,12 +48,6 @@ Future<ProviderScope> createAppProviderScope({
   if (resolvedOptions.initializeSecurity) {
     Log.i('Main', 'Initializing IdentityService...');
     await identityService.initialize();
-    Log.i('Main', 'Initializing SecurityService...');
-    await securityService.initialize();
-
-    Log.i('Main', 'Linking Public Key to Identity...');
-    final pubKey = await securityService.getPublicKey();
-    await identityService.updatePublicKey(base64Encode(pubKey));
   } else {
     Log.i('Main', 'Skipping security bootstrap (test/runtime override).');
   }
@@ -75,6 +67,7 @@ Future<ProviderScope> createAppProviderScope({
     overrides: [
       crdtServiceProvider.overrideWithValue(crdtService),
       identityServiceProvider.overrideWith((ref) => identityService),
+      securityServiceProvider.overrideWithValue(securityService),
       encryptionServiceProvider.overrideWithValue(encryptionService),
       transferStatsRepositoryProvider.overrideWithValue(transferStatsRepo),
       ...resolvedOptions.providerOverrides,

@@ -5,8 +5,6 @@ import '../../../../shared/theme/tokens/dialog_button_styles.dart';
 import '../../../../shared/utils/debug_helper.dart';
 
 import '../../../../app/di/app_providers.dart';
-import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
-import 'package:cohortz/slices/dashboard_shell/models/user_model.dart';
 import 'notification_settings_dialog.dart';
 
 class AppUserSettingsDialog extends ConsumerStatefulWidget {
@@ -18,35 +16,9 @@ class AppUserSettingsDialog extends ConsumerStatefulWidget {
 }
 
 class _AppUserSettingsDialogState extends ConsumerState<AppUserSettingsDialog> {
-  final _nameController = TextEditingController();
-  bool _isLoading = false;
-  bool _initialized = false;
-  String? _myId;
-  String? _currentPublicKey;
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     final themeMode = ref.watch(themeModeProvider);
-
-    final identityService = ref.watch(identityServiceProvider);
-    final myProfile = identityService.profile;
-
-    if (!_initialized && myProfile != null) {
-      _myId = myProfile.id;
-      _nameController.text = myProfile.displayName;
-      _currentPublicKey = myProfile.publicKey;
-      _initialized = true;
-    }
-
-    if (myProfile == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
 
     return Dialog(
       backgroundColor: Theme.of(context).cardColor,
@@ -76,7 +48,7 @@ class _AppUserSettingsDialogState extends ConsumerState<AppUserSettingsDialog> {
                   ),
                   const SizedBox(width: 16),
                   Text(
-                    'App & User Settings',
+                    'App Settings',
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
@@ -86,58 +58,6 @@ class _AppUserSettingsDialogState extends ConsumerState<AppUserSettingsDialog> {
                 ],
               ),
               const SizedBox(height: 24),
-              Text(
-                'User Settings',
-                style: TextStyle(
-                  color: Theme.of(context).hintColor,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.6,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Display Name',
-                style: TextStyle(
-                  color: Theme.of(context).hintColor,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _nameController,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
-                decoration: InputDecoration(
-                  hintText: 'Enter your name',
-                  hintStyle: TextStyle(color: Theme.of(context).hintColor),
-                  filled: true,
-                  fillColor: Theme.of(context).colorScheme.surface,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(
-                      color: Theme.of(context).dividerColor,
-                    ),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(
-                      color: Theme.of(context).dividerColor,
-                    ),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              Divider(color: Theme.of(context).colorScheme.outlineVariant),
-              const SizedBox(height: 16),
               Text(
                 'App Settings',
                 style: TextStyle(
@@ -275,20 +195,6 @@ class _AppUserSettingsDialogState extends ConsumerState<AppUserSettingsDialog> {
                     onPressed: () => Navigator.of(context).pop(),
                     child: const Text('Close'),
                   ),
-                  const SizedBox(width: 16),
-                  ElevatedButton(
-                    onPressed: _isLoading ? null : _saveProfile,
-                    child: _isLoading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text('Save Changes'),
-                  ),
                 ],
               ),
             ],
@@ -296,36 +202,5 @@ class _AppUserSettingsDialogState extends ConsumerState<AppUserSettingsDialog> {
         ),
       ),
     );
-  }
-
-  Future<void> _saveProfile() async {
-    if (_myId == null) return;
-
-    setState(() => _isLoading = true);
-    try {
-      final identityService = ref.read(identityServiceProvider);
-      final repo = ref.read(dashboardRepositoryProvider);
-
-      final newName = _nameController.text.trim().isEmpty
-          ? 'Anonymous'
-          : _nameController.text.trim();
-      final newProfile = UserProfile(
-        id: _myId!,
-        displayName: newName,
-        publicKey: _currentPublicKey ?? '',
-      );
-
-      await identityService.saveProfile(newProfile);
-
-      await repo.saveUserProfile(newProfile);
-
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
   }
 }

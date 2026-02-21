@@ -49,7 +49,12 @@ class _RecordingCrdtService extends CrdtService {
     String tableName = 'cohrtz',
   }) async {
     puts.add(
-      _PutCall(roomName: roomName, key: key, value: value, tableName: tableName),
+      _PutCall(
+        roomName: roomName,
+        key: key,
+        value: value,
+        tableName: tableName,
+      ),
     );
   }
 }
@@ -88,7 +93,7 @@ void main() {
       final broadcastPackets = <P2PPacket>[];
       final handler = InviteHandler(
         crdtService: crdt,
-        getLocalParticipantId: () => 'host',
+        getLocalParticipantIdForRoom: (_) => 'host',
         broadcast: (room, packet) async {
           expect(room, inviteRoomName);
           broadcastPackets.add(packet);
@@ -109,7 +114,8 @@ void main() {
       expect(crdt.puts.single.key, 'group_settings:legacy');
       expect(crdt.puts.single.tableName, 'group_settings');
 
-      final written = jsonDecode(crdt.puts.single.value) as Map<String, dynamic>;
+      final written =
+          jsonDecode(crdt.puts.single.value) as Map<String, dynamic>;
       final invites = (written['invites'] as List).cast<Map>();
       expect(invites.where((i) => i['code'] == inviteCode), isEmpty);
 
@@ -141,13 +147,16 @@ void main() {
       final crdt = _RecordingCrdtService(
         groupSettingsRows: [
           {'id': 'group_settings', 'value': jsonEncode(settings.toMap())},
-          {'id': 'group_settings:legacy', 'value': jsonEncode(settings.toMap())},
+          {
+            'id': 'group_settings:legacy',
+            'value': jsonEncode(settings.toMap()),
+          },
         ],
       );
 
       final handler = InviteHandler(
         crdtService: crdt,
-        getLocalParticipantId: () => 'host',
+        getLocalParticipantIdForRoom: (_) => 'host',
         broadcast: (room, packet) async {},
         getConnectedRoomNames: () => <String>{dataRoomName},
       );
@@ -173,4 +182,3 @@ void main() {
     });
   });
 }
-

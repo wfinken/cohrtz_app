@@ -5,6 +5,7 @@ import '../../../../shared/theme/tokens/dialog_button_styles.dart';
 import '../../../../app/di/app_providers.dart';
 import 'package:cohortz/slices/dashboard_shell/models/user_model.dart';
 import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
+import 'group_user_editor_dialog.dart';
 
 class GroupUsersDialog extends ConsumerWidget {
   const GroupUsersDialog({super.key});
@@ -21,6 +22,15 @@ class GroupUsersDialog extends ConsumerWidget {
     final onlineIds = remoteParticipants.keys.toSet();
     if (myId != null) {
       onlineIds.add(myId);
+    }
+    UserProfile? myProfile;
+    if (myId != null && myId.isNotEmpty) {
+      for (final profile in allProfiles) {
+        if (profile.id == myId) {
+          myProfile = profile;
+          break;
+        }
+      }
     }
 
     final sortedProfiles = List<UserProfile>.from(allProfiles);
@@ -93,6 +103,21 @@ class GroupUsersDialog extends ConsumerWidget {
                       color: Theme.of(context).hintColor,
                     ),
                   ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.edit),
+                  tooltip: 'Edit my group profile',
+                  onPressed: myId == null || myId.isEmpty
+                      ? null
+                      : () {
+                          showDialog(
+                            context: context,
+                            builder: (_) => GroupUserEditorDialog(
+                              initialProfile: myProfile,
+                            ),
+                          );
+                        },
                 ),
               ],
             ),

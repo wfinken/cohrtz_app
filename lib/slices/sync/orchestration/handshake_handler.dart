@@ -12,7 +12,7 @@ import '../../../shared/security/security_service.dart';
 /// before they can communicate securely.
 class HandshakeHandler {
   final SecurityService _securityService;
-  final String Function() getLocalParticipantId;
+  final String Function(String roomName) getLocalParticipantIdForRoom;
   final Future<void> Function(String roomName, P2PPacket packet) broadcast;
 
   /// Signing public keys by room -> sender ID
@@ -29,7 +29,7 @@ class HandshakeHandler {
 
   HandshakeHandler({
     required SecurityService securityService,
-    required this.getLocalParticipantId,
+    required this.getLocalParticipantIdForRoom,
     required this.broadcast,
   }) : _securityService = securityService;
 
@@ -59,7 +59,7 @@ class HandshakeHandler {
     final packet = P2PPacket()
       ..type = P2PPacket_PacketType.HANDSHAKE
       ..requestId = const Uuid().v4()
-      ..senderId = getLocalParticipantId()
+      ..senderId = getLocalParticipantIdForRoom(roomName)
       ..payload = pubKey
       ..encryptionPublicKey = encPubKey;
 
@@ -89,7 +89,7 @@ class HandshakeHandler {
     final packet = P2PPacket()
       ..type = P2PPacket_PacketType.HANDSHAKE
       ..requestId = const Uuid().v4()
-      ..senderId = getLocalParticipantId()
+      ..senderId = getLocalParticipantIdForRoom(roomName)
       ..payload = [];
 
     await broadcast(roomName, packet);

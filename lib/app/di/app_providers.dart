@@ -1,6 +1,7 @@
 export 'package:cohortz/shared/theme/theme_provider.dart';
 export 'providers/secure_storage_provider.dart';
 export 'providers/security_provider.dart';
+export 'providers/group_identity_provider.dart';
 export 'providers/encryption_provider.dart';
 export 'providers/identity_provider.dart';
 export 'providers/node_id_provider.dart';

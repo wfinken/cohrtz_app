@@ -26,7 +26,6 @@ import 'package:cohortz/slices/calendar/ui/dialogs/add_event_dialog.dart';
 import 'package:cohortz/slices/vault/ui/dialogs/add_vault_dialog.dart';
 import 'package:cohortz/slices/tasks/ui/dialogs/add_task_dialog.dart';
 import 'package:cohortz/slices/polls/ui/dialogs/create_poll_dialog.dart';
-import 'dialogs/onboarding_dialog.dart';
 import 'package:cohortz/slices/members/ui/dialogs/invite_dialog.dart';
 import 'package:cohortz/slices/calendar/ui/pages/calendar_page.dart';
 import 'package:cohortz/slices/members/ui/pages/members_page.dart';
@@ -50,16 +49,11 @@ class _DashboardLayoutState extends ConsumerState<DashboardLayout> {
   @override
   void initState() {
     super.initState();
-    _checkOnboarding();
     _activeRoomSubscription = ref.listenManual(
       syncServiceProvider.select((s) => s.currentRoomName),
       (previous, next) {
         if (next != null && next.isNotEmpty && previous != next) {
-          final identityService = ref.read(identityServiceProvider);
-          final userProfile = identityService.profile;
-          if (userProfile != null) {
-            ref.read(dashboardRepositoryProvider).saveUserProfile(userProfile);
-          }
+          _ensureLocalProfile(next);
 
           if (!mounted) return;
           setState(() {
@@ -79,17 +73,27 @@ class _DashboardLayoutState extends ConsumerState<DashboardLayout> {
     super.dispose();
   }
 
-  void _checkOnboarding() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final identityService = ref.read(identityServiceProvider);
-      if (identityService.isNew) {
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (_) => const OnboardingDialog(),
-        );
-      }
-    });
+  Future<void> _ensureLocalProfile(String roomName) async {
+    final syncService = ref.read(syncServiceProvider);
+    final localId = syncService.getLocalParticipantIdForRoom(roomName);
+    if (localId == null || localId.isEmpty) return;
+
+    final groupIdentity = ref.read(groupIdentityServiceProvider);
+    var profile = await groupIdentity.loadForGroup(roomName);
+    if (profile == null) {
+      final globalName = ref
+          .read(identityServiceProvider)
+          .profile
+          ?.displayName
+          .trim();
+      if (globalName == null || globalName.isEmpty) return;
+      profile = await groupIdentity.ensureForGroup(
+        groupId: roomName,
+        displayName: globalName,
+        fallbackIdentity: localId,
+      );
+    }
+    await ref.read(dashboardRepositoryProvider).saveUserProfile(profile);
   }
 
   int _calculateLayoutIdentifier(double width) {

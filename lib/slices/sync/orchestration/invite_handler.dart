@@ -17,7 +17,7 @@ import '../../../shared/utils/logging_service.dart';
 /// the detailed logic itself.
 class InviteHandler {
   final CrdtService _crdtService;
-  final String Function() getLocalParticipantId;
+  final String Function(String roomName) getLocalParticipantIdForRoom;
   final Future<void> Function(String roomName, P2PPacket packet) broadcast;
   final Set<String> Function() getConnectedRoomNames;
 
@@ -25,7 +25,7 @@ class InviteHandler {
 
   InviteHandler({
     required CrdtService crdtService,
-    required this.getLocalParticipantId,
+    required this.getLocalParticipantIdForRoom,
     required this.broadcast,
     required this.getConnectedRoomNames,
   }) : _crdtService = crdtService;
@@ -96,7 +96,7 @@ class InviteHandler {
         final ackPacket = P2PPacket()
           ..type = P2PPacket_PacketType.INVITE_ACK
           ..requestId = packet.requestId
-          ..senderId = getLocalParticipantId()
+          ..senderId = getLocalParticipantIdForRoom(roomName)
           ..payload = utf8.encode(cachedDataRoom);
 
         await broadcast(roomName, ackPacket);
@@ -245,7 +245,7 @@ class InviteHandler {
                 final ackPacket = P2PPacket()
                   ..type = P2PPacket_PacketType.INVITE_ACK
                   ..requestId = packet.requestId
-                  ..senderId = getLocalParticipantId()
+                  ..senderId = getLocalParticipantIdForRoom(roomName)
                   ..payload = utf8.encode(settings.dataRoomName);
 
                 await broadcast(roomName, ackPacket);
@@ -288,7 +288,7 @@ class InviteHandler {
         final nackPacket = P2PPacket()
           ..type = P2PPacket_PacketType.INVITE_NACK
           ..requestId = packet.requestId
-          ..senderId = getLocalParticipantId()
+          ..senderId = getLocalParticipantIdForRoom(roomName)
           ..payload = utf8.encode('Invalid, expired, or used invite code.');
 
         await broadcast(roomName, nackPacket);
@@ -314,7 +314,10 @@ class InviteHandler {
     String inviteCode, {
     Duration timeout = const Duration(seconds: 15),
   }) async {
-    final packet = createInviteRequest(inviteCode, getLocalParticipantId());
+    final packet = createInviteRequest(
+      inviteCode,
+      getLocalParticipantIdForRoom(roomName),
+    );
     final completer = Completer<String>();
     _pendingInvites[packet.requestId] = completer;
 
@@ -361,7 +364,10 @@ class InviteHandler {
   /// Sends an INVITE_REQ to the group (broadcast) and returns the Request ID.
   /// DEPRECATED: Use [executeInviteProtocol] for reliable execution.
   Future<String> sendInviteRequest(String roomName, String inviteCode) async {
-    final packet = createInviteRequest(inviteCode, getLocalParticipantId());
+    final packet = createInviteRequest(
+      inviteCode,
+      getLocalParticipantIdForRoom(roomName),
+    );
     Log.i(
       'InviteHandler',
       'Sending INVITE_REQ for $roomName with code $inviteCode (ReqID: ${packet.requestId})',

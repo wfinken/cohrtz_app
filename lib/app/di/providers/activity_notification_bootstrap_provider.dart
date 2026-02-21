@@ -8,7 +8,6 @@ import 'package:cohortz/slices/dashboard_shell/models/user_model.dart';
 
 import 'notification_provider.dart';
 import 'sync_service_provider.dart';
-import 'identity_provider.dart';
 import 'widget_notification_preferences_provider.dart';
 
 import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
@@ -16,7 +15,6 @@ import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
 void _bootstrapActivityNotifications(Ref ref) {
   final notificationService = ref.read(notificationServiceProvider);
   final syncService = ref.read(syncServiceProvider);
-  final identityService = ref.read(identityServiceProvider);
   final widgetPrefs = ref.read(widgetNotificationPreferencesProvider);
 
   void log(String message) {}
@@ -55,7 +53,7 @@ void _bootstrapActivityNotifications(Ref ref) {
       const GroupNotificationSettings();
 
   String currentIdentity() {
-    return syncService.identity ?? identityService.profile?.id ?? '';
+    return syncService.identity ?? '';
   }
 
   void updateNotificationSettings(GroupSettings? settings) {
@@ -515,7 +513,7 @@ void _bootstrapActivityNotifications(Ref ref) {
       return;
     }
 
-    final localUserId = identityService.profile?.id ?? syncService.identity;
+    final localUserId = currentIdentity();
     final addedIds = nextIds
         .difference(knownUserIds)
         .where((id) => id != localUserId);
@@ -654,9 +652,7 @@ void _bootstrapActivityNotifications(Ref ref) {
     final room = activeRoomName;
     if (room == null || room.isEmpty) return;
 
-    final localUserId =
-        ref.read(identityServiceProvider).profile?.id ??
-        ref.read(syncServiceProvider).identity;
+    final localUserId = currentIdentity();
     final displayRoom = roomDisplayName();
     if (addedList.isNotEmpty) {
       log(

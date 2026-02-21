@@ -39,8 +39,9 @@ final Provider<ConnectionManager>
 connectionManagerProvider = Provider<ConnectionManager>((ref) {
   final initialSyncInFlight = <String>{};
   final lastInitialSyncAt = <String, DateTime>{};
+  late final ConnectionManager manager;
 
-  final manager = ConnectionManager(
+  manager = ConnectionManager(
     crdtService: ref.watch(crdtServiceProvider),
     securityService: ref.watch(securityServiceProvider),
     secureStorage: ref.watch(secureStorageServiceProvider),
@@ -57,13 +58,16 @@ connectionManagerProvider = Provider<ConnectionManager>((ref) {
       ref.read(dataBroadcasterProvider).retryBufferedPackets(room);
 
       final peerId = event.participant.identity;
-      final localId = ref.read(nodeIdProvider);
+      final localId = manager.resolveLocalParticipantIdForRoom(room);
       if (peerId.isNotEmpty && localId.isNotEmpty) {
         // Deterministic "initiator" for the pair: only one side pings.
         final shouldInitiate = localId.compareTo(peerId) < 0;
         if (shouldInitiate) {
           final time = ref.read(hybridTimeServiceProvider);
-          final ping = time.buildSyncPing(peerId: peerId);
+          final ping = time.buildSyncPing(
+            peerId: peerId,
+            localParticipantId: localId,
+          );
           unawaited(ref.read(dataBroadcasterProvider).broadcast(room, ping));
         }
       }
@@ -117,7 +121,7 @@ connectionManagerProvider = Provider<ConnectionManager>((ref) {
       final packet = P2PPacket()
         ..type = P2PPacket_PacketType.DATA_CHUNK
         ..requestId = const Uuid().v4()
-        ..senderId = ref.read(nodeIdProvider)
+        ..senderId = manager.resolveLocalParticipantIdForRoom(room)
         ..payload = data;
       ref.read(dataBroadcasterProvider).broadcast(room, packet);
     },

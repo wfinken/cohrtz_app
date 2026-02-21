@@ -287,6 +287,27 @@ class SecurityService {
     return pub.bytes;
   }
 
+  /// Clears and regenerates signing/encryption keypairs for a specific group.
+  /// This is used when users explicitly rotate their keys for one group.
+  Future<void> resetGroupKeys(String groupId) async {
+    if (groupId.isEmpty) {
+      throw ArgumentError.value(groupId, 'groupId', 'Must not be empty');
+    }
+
+    await _secureStorage.delete(
+      _signingSeedStorageKey(groupId, legacyStorageKeys: false),
+    );
+    await _secureStorage.delete(
+      _encryptionSeedStorageKey(groupId, legacyStorageKeys: false),
+    );
+
+    _signingKeyPairs.remove(groupId);
+    _encryptionKeyPairs.remove(groupId);
+    _initializationFutures.remove('group:$groupId');
+
+    await initializeForGroup(groupId);
+  }
+
   /// Returns the deterministic seed for the encryption key pair.
   /// Used as a base for TreeKEM leaf secrets to ensure consistency.
   Future<List<int>> getEncryptionSeed({String? groupId}) async {

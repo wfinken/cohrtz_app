@@ -10,6 +10,7 @@ import '../../../../slices/permissions_core/permission_providers.dart';
 import '../../../../slices/permissions_core/permission_utils.dart';
 import '../../../../app/di/app_providers.dart';
 import '../../../../shared/theme/tokens/dialog_button_styles.dart';
+import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
 import '../../models/note_model.dart';
 import 'package:cohortz/slices/dashboard_shell/ui/widgets/ghost_add_button.dart';
 
@@ -1114,9 +1115,14 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
     );
     if (documentId == null || userId == null || userId.isEmpty) return;
 
-    final displayName =
-        ref.read(identityServiceProvider).profile?.displayName ??
-        _shortUserLabel(userId);
+    final profiles = ref.read(userProfilesProvider).value ?? const [];
+    String displayName = _shortUserLabel(userId);
+    for (final profile in profiles) {
+      if (profile.id == userId && profile.displayName.trim().isNotEmpty) {
+        displayName = profile.displayName.trim();
+        break;
+      }
+    }
 
     await ref
         .read(noteRepositoryProvider)
