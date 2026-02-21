@@ -120,14 +120,28 @@ Here is exactly how we implement the security stack:
 
 - Run unit/widget tests:
   - `flutter test`
-- Run deterministic integration smoke tests (no network):
-  - `flutter test integration_test/smoke`
-- Run optional backend E2E smoke test (requires token endpoint + LiveKit):
-  1. Choose a reachable backend room name and identity.
-  2. Run:
-     - `flutter test integration_test/e2e/backend_connect_smoke_test.dart --dart-define=COHRTZ_E2E_ENABLED=true --dart-define=COHRTZ_E2E_ROOM=<room> --dart-define=COHRTZ_E2E_IDENTITY=<identity>`
-  3. Troubleshooting:
-     - If you see `All tests skipped`, one or more required `--dart-define` values were not provided.
+- Two-client backend E2E smoke prerequisites:
+  - Requires a reachable token endpoint (`/token`) and LiveKit backend.
+  - Both clients connect to the same room with different identities.
+  - Required defines: `COHRTZ_E2E_ENABLED`, `COHRTZ_E2E_ROOM`, `COHRTZ_E2E_IDENTITY_A`, `COHRTZ_E2E_IDENTITY_B`.
+- Run two-client backend E2E smoke suite:
+  - `flutter test integration_test/e2e/two_client_smoke_test.dart --dart-define=COHRTZ_E2E_ENABLED=true --dart-define=COHRTZ_E2E_ROOM=<room> --dart-define=COHRTZ_E2E_IDENTITY_A=<identity-a> --dart-define=COHRTZ_E2E_IDENTITY_B=<identity-b>`
+  - What it validates:
+    - Both clients connect and discover each other in the same room.
+    - `tasks`: create/update/delete across clients with assertions on both sides.
+    - `calendar_events`: create/update/delete across clients with assertions on both sides.
+    - `notes`: create/update/delete across clients with assertions on both sides.
+    - `chat`: create thread + message, update message, delete thread/messages, with assertions on both sides.
+    - `polls`: create/update/delete and cross-client convergence.
+    - `group_settings`: save from one client, update from the other, and verify final values on both.
+    - `roles`: create/update/delete with cross-client assertions.
+    - `members`: create/update/delete with cross-client assertions.
+- Pass criteria for both suites:
+  - Each mutation is asserted with eventual-consistency checks on both clients.
+  - The test fails if propagation does not converge within the configured timeout.
+- Troubleshooting:
+  - If you see `All tests skipped`, one or more required `--dart-define` values were not provided.
+  - `COHRTZ_E2E_IDENTITY_A` and `COHRTZ_E2E_IDENTITY_B` must be different values.
 
 ## 📄 License
 AGPL-3.0
