@@ -33,7 +33,7 @@ dependencies:
   # Security packages
   flutter_secure_storage: ^9.2.4
   flutter_dashboard_grid:
-    path: ../packages/flutter_dashboard_grid
+    path: ../flutter_dashboard_grid
   dart_mappable: ^4.2.0
   flutter_background_service: ^5.0.0
 
