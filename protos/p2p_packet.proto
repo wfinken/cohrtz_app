@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+// Defines the core packet structure for Cohrtz P2P communication.
+message P2PPacket {
+  enum PacketType {
+    SYNC_REQ = 0;   // Request missing data
+    SYNC_CLAIM = 1; // Volunteer election win
+    DATA_CHUNK = 2; // Actual payload
+    HANDSHAKE = 3;  // Security introduction
+    CONSISTENCY_CHECK = 4; // Data integrity verification
+    INVITE_REQ = 5; // Request join via invite code
+    INVITE_ACK = 6; // Confirm join and provide Data Room UUID
+    INVITE_NACK = 7; // Reject join (invalid code)
+    UNICAST_REQ = 8; // Request to start unicast (UUIDv7 room)
+    UNICAST_ACK = 9; // Confirm unicast and join
+  }
+
+  PacketType type = 1;
+  string request_id = 2;       // UUID to track requests
+  string sender_id = 3;        // LiveKit Participant Identity
+  bytes signature = 4;         // Ed25519 Signature of the payload
+  bytes payload = 5;           // Zstd Compressed Content
+  int32 uncompressed_size = 6; // Zip Bomb Check (safety limit)
+  int32 chunk_index = 7;       // For chunked large payloads
+  bool is_last_chunk = 8;      // End of stream flag
+  string target_id = 9;        // Target Participant Identity for unicast
+  bool encrypted = 10;         // Whether the payload is encrypted
+  bytes encryption_public_key = 11; // X25519 Public Key for Key Exchange
+  bytes sender_public_key = 12;     // Ed25519 Public Key for Identity Verification
+
+  // Hybrid P2P Time Synchronization System
+  // physical_time: sender wall-clock time (UTC ms) adjusted by sender's peer offset(s)
+  // logical_time: Lamport logical clock
+  int64 physical_time = 13;
+  int64 logical_time = 14;
+}

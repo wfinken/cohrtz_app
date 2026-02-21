@@ -1,0 +1,7 @@
+targets:
+  $default:
+    builders:
+      isar_generator:
+        generate_for:
+          exclude:
+            - lib/src/generated/**

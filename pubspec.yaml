@@ -1,0 +1,49 @@
+name: cohortz
+description: "A new Flutter project."
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  livekit_client: ^2.4.8
+  protobuf: ^3.1.0
+  fixnum: ^1.1.0
+  crypto: ^3.0.3
+  flutter_riverpod: ^3.1.0
+  uuid: ^4.4.0
+  cryptography: ^2.9.0
+  path_provider: ^2.1.5
+  sqlite3: any
+  sql_crdt: ^3.0.3
+  drift: any
+  drift_crdt: any
+  sqlite3_flutter_libs: ^0.5.24
+  http: ^1.6.0
+  path: ^1.9.0
+  shared_preferences: ^2.5.3
+  intl: ^0.20.2
+  google_fonts: ^6.1.0
+  dotted_border: 3.1.0
+  table_calendar: ^3.1.0
+  flutter_local_notifications: ^18.0.1
+  # Security packages
+  flutter_secure_storage: ^9.2.4
+  flutter_dashboard_grid:
+    path: ../packages/flutter_dashboard_grid
+  dart_mappable: ^4.2.0
+  flutter_background_service: ^5.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  build_runner: ^2.4.13
+  dart_mappable_builder: ^4.2.0
+  drift_dev: ^2.20.0
+
+flutter:
+  uses-material-design: true
