@@ -1,8 +1,8 @@
 import 'dart:convert';
 
-import 'package:cohortz/features/dashboard/domain/system_model.dart';
-import 'package:cohortz/features/sync/application/invite_handler.dart';
-import 'package:cohortz/features/sync/infrastructure/crdt_service.dart';
+import 'package:cohortz/slices/dashboard_shell/models/system_model.dart';
+import 'package:cohortz/slices/sync/orchestration/invite_handler.dart';
+import 'package:cohortz/slices/sync/runtime/crdt_service.dart';
 import 'package:cohortz/src/generated/p2p_packet.pb.dart';
 import 'package:flutter_test/flutter_test.dart';
 

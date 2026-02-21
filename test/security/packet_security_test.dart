@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:cohortz/core/security/security_service.dart';
-import 'package:cohortz/core/security/encryption_service.dart';
+import 'package:cohortz/shared/security/security_service.dart';
+import 'package:cohortz/shared/security/encryption_service.dart';
 import 'package:cohortz/src/generated/p2p_packet.pb.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';

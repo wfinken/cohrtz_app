@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:cohortz/core/security/treekem/ratchet_tree.dart';
-import 'package:cohortz/core/security/treekem/treekem_service.dart';
-import 'package:cohortz/core/security/treekem/node.dart';
-import 'package:cohortz/core/security/treekem/crypto_utils.dart';
+import 'package:cohortz/shared/security/treekem/ratchet_tree.dart';
+import 'package:cohortz/shared/security/treekem/treekem_service.dart';
+import 'package:cohortz/shared/security/treekem/node.dart';
+import 'package:cohortz/shared/security/treekem/crypto_utils.dart';
 
 void main() {
   group('TreekemService', () {

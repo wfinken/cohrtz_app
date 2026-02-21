@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:cohortz/features/dashboard/domain/user_model.dart';
+import 'package:cohortz/slices/dashboard_shell/models/user_model.dart';
 
 void main() {
   group('UserProfile Serialization', () {

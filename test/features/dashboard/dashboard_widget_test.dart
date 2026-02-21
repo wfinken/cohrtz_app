@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:cohortz/features/dashboard/domain/dashboard_models.dart';
-import 'package:cohortz/core/utils/extensions.dart';
+import 'package:cohortz/slices/dashboard_shell/models/dashboard_models.dart';
+import 'package:cohortz/shared/utils/extensions.dart';
 
 void main() {
   group('DashboardWidget Add Functionality', () {
