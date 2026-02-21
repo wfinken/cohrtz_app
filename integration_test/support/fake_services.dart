@@ -118,7 +118,11 @@ class FakeGroupConnectionProcess implements GroupConnectionProcess {
   final bool autoJoinResult;
 
   @override
-  Future<void> connect(String roomName, {String inviteCode = ''}) async {}
+  Future<void> connect(
+    String roomName, {
+    String inviteCode = '',
+    String? localDisplayName,
+  }) async {}
 
   @override
   Future<bool> autoJoinSaved() async => autoJoinResult;

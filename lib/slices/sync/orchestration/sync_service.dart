@@ -50,6 +50,8 @@ class SyncService extends ChangeNotifier with WidgetsBindingObserver {
   String? get currentRoomName => _connectionManager.activeRoomName;
   String? get localParticipantId => _connectionManager.localParticipantId;
   String? get identity => _connectionManager.localParticipantId; // Alias
+  String? getLocalParticipantIdForRoom(String roomName) =>
+      _connectionManager.getLocalParticipantIdForRoom(roomName);
 
   bool get isActiveRoomConnected => _connectionManager.isActiveRoomConnected();
   bool get isActiveRoomConnecting =>

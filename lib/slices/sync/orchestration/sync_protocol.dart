@@ -22,7 +22,7 @@ import '../runtime/crdt_service.dart';
 class SyncProtocol {
   final CrdtService _crdtService;
   final PermissionService _permissionService;
-  final String Function() getLocalParticipantId;
+  final String Function(String roomName) getLocalParticipantIdForRoom;
   final Future<void> Function(String roomName, P2PPacket packet) broadcast;
   final Future<void> Function(
     String roomName,
@@ -41,7 +41,7 @@ class SyncProtocol {
   SyncProtocol({
     required CrdtService crdtService,
     required PermissionService permissionService,
-    required this.getLocalParticipantId,
+    required this.getLocalParticipantIdForRoom,
     required this.broadcast,
     required this.sendSecure,
     required this.getGroupKey,
@@ -76,7 +76,7 @@ class SyncProtocol {
     final reqPacket = P2PPacket()
       ..type = P2PPacket_PacketType.SYNC_REQ
       ..requestId = const Uuid().v4()
-      ..senderId = getLocalParticipantId()
+      ..senderId = getLocalParticipantIdForRoom(roomName)
       ..payload = vcPayload;
 
     await broadcast(roomName, reqPacket);
@@ -88,7 +88,7 @@ class SyncProtocol {
   void handleSyncReq(String roomName, P2PPacket packet, VoidCallback onWin) {
     if (_isElectionRunning) return;
 
-    final localId = getLocalParticipantId();
+    final localId = getLocalParticipantIdForRoom(roomName);
     Log.d(
       'SyncProtocol',
       'Checking SYNC_REQ ($roomName): Sender=${packet.senderId}, Local=$localId',
@@ -118,9 +118,9 @@ class SyncProtocol {
   /// Handles an incoming SYNC_CLAIM packet.
   ///
   /// Cancels our election timer if someone else claimed the sync.
-  void handleSyncClaim(P2PPacket packet) {
+  void handleSyncClaim(String roomName, P2PPacket packet) {
     if (!_isElectionRunning) return;
-    if (packet.senderId == getLocalParticipantId()) return;
+    if (packet.senderId == getLocalParticipantIdForRoom(roomName)) return;
 
     Log.i(
       'SyncProtocol',
@@ -146,7 +146,7 @@ class SyncProtocol {
       final claimPacket = P2PPacket()
         ..type = P2PPacket_PacketType.SYNC_CLAIM
         ..requestId = requestId
-        ..senderId = getLocalParticipantId();
+        ..senderId = getLocalParticipantIdForRoom(roomName);
 
       await broadcast(roomName, claimPacket);
       cancelElection();
@@ -176,7 +176,7 @@ class SyncProtocol {
       final dataPacket = P2PPacket()
         ..type = P2PPacket_PacketType.DATA_CHUNK
         ..requestId = const Uuid().v4()
-        ..senderId = getLocalParticipantId()
+        ..senderId = getLocalParticipantIdForRoom(roomName)
         ..payload = payload;
 
       await sendSecure(roomName, requesterId, dataPacket);
@@ -300,7 +300,7 @@ class SyncProtocol {
       final packet = P2PPacket()
         ..type = P2PPacket_PacketType.CONSISTENCY_CHECK
         ..requestId = const Uuid().v4()
-        ..senderId = getLocalParticipantId()
+        ..senderId = getLocalParticipantIdForRoom(roomName)
         ..payload = payload;
 
       await broadcast(roomName, packet);

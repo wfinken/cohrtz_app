@@ -69,8 +69,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
     final syncIdentity = ref.watch(
       syncServiceProvider.select((s) => s.identity),
     );
-    final myId =
-        syncIdentity ?? ref.watch(identityServiceProvider).profile?.id ?? '';
+    final myId = syncIdentity ?? '';
 
     final canEditChat = permissionsAsync.maybeWhen(
       data: (permissions) =>
@@ -1185,10 +1184,14 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
   }) {
     if (content.trim().isEmpty) return;
 
-    final senderId =
-        ref.read(syncServiceProvider).identity ??
-        ref.read(identityServiceProvider).profile?.id ??
-        'Anonymous';
+    final sync = ref.read(syncServiceProvider);
+    final roomName = sync.currentRoomName;
+    final senderId = roomName == null
+        ? sync.identity
+        : (sync.getLocalParticipantIdForRoom(roomName) ?? sync.identity);
+    if (senderId == null || senderId.isEmpty) {
+      return;
+    }
     final time = ref.read(hybridTimeServiceProvider);
     final logicalTime = time.nextLogicalTime();
     final msg = ChatMessage(

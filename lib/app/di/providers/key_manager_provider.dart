@@ -3,7 +3,6 @@ import 'package:cohortz/slices/sync/runtime/key_manager.dart';
 import 'encryption_provider.dart';
 import 'secure_storage_provider.dart';
 import 'treekem_handler_provider.dart';
-import 'node_id_provider.dart';
 import 'data_broadcaster_provider.dart';
 import 'connection_manager_provider.dart';
 import 'group_manager_provider.dart';
@@ -13,7 +12,9 @@ final Provider<KeyManager> keyManagerProvider = Provider<KeyManager>((ref) {
     encryptionService: ref.watch(encryptionServiceProvider),
     secureStorage: ref.watch(secureStorageServiceProvider),
     treeKemHandler: ref.watch(treekemHandlerProvider),
-    getLocalParticipantId: () => ref.read(nodeIdProvider),
+    getLocalParticipantIdForRoom: (roomName) => ref
+        .read(connectionManagerProvider)
+        .resolveLocalParticipantIdForRoom(roomName),
     broadcast: (room, packet) =>
         ref.read(dataBroadcasterProvider).broadcast(room, packet),
     getRemoteParticipantIds: (room) {

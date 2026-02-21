@@ -29,7 +29,7 @@ class ConnectionManager extends ChangeNotifier {
   // Track rooms with in-progress connections
   final Set<String> _connectingRooms = {};
 
-  String? _localParticipantId;
+  final Map<String, String> _localParticipantIdsByRoom = {};
   String? _activeRoomName; // The room currently being viewed
   final Map<String, ConnectionState> _lastStates = {};
 
@@ -72,7 +72,39 @@ class ConnectionManager extends ChangeNotifier {
 
   Room? getRoom(String roomName) => _rooms[roomName];
   String? get activeRoomName => _activeRoomName;
-  String? get localParticipantId => _localParticipantId;
+  String? get localParticipantId {
+    final active = _activeRoomName;
+    if (active == null) return null;
+    final resolved = resolveLocalParticipantIdForRoom(active);
+    return resolved.isEmpty ? null : resolved;
+  }
+
+  String? getLocalParticipantIdForRoom(String roomName) {
+    final resolved = resolveLocalParticipantIdForRoom(roomName);
+    return resolved.isEmpty ? null : resolved;
+  }
+
+  String resolveLocalParticipantIdForRoom(String roomName) {
+    if (roomName.isEmpty) return '';
+
+    final cached = _localParticipantIdsByRoom[roomName];
+    if (cached != null && cached.isNotEmpty) {
+      return cached;
+    }
+
+    final livekitIdentity = _rooms[roomName]?.localParticipant?.identity;
+    if (livekitIdentity != null && livekitIdentity.isNotEmpty) {
+      _localParticipantIdsByRoom[roomName] = livekitIdentity;
+      return livekitIdentity;
+    }
+
+    final knownIdentity = _groupManager.findGroup(roomName)['identity'];
+    if (knownIdentity != null && knownIdentity.isNotEmpty) {
+      return knownIdentity;
+    }
+
+    return '';
+  }
 
   bool isConnected(String roomName) =>
       _rooms[roomName]?.connectionState == ConnectionState.connected;
@@ -118,6 +150,7 @@ class ConnectionManager extends ChangeNotifier {
 
   Future<void> _disconnectTrackedRoom(String roomName, Room room) async {
     await _cancelCrdtSubscription(roomName);
+    _localParticipantIdsByRoom.remove(roomName);
     _lastStates.remove(roomName);
     onCleanupSync(roomName);
     try {
@@ -138,6 +171,7 @@ class ConnectionManager extends ChangeNotifier {
     }
     _rooms.clear();
     _connectingRooms.clear();
+    _localParticipantIdsByRoom.clear();
     _lastStates.clear();
     _activeRoomName = null;
     _pruningTimer?.cancel();
@@ -154,6 +188,7 @@ class ConnectionManager extends ChangeNotifier {
       _lastStates.remove(roomName);
     }
     _connectingRooms.remove(roomName);
+    _localParticipantIdsByRoom.remove(roomName);
     if (_activeRoomName == roomName) {
       _activeRoomName = null;
       notifyListeners();
@@ -184,6 +219,7 @@ class ConnectionManager extends ChangeNotifier {
     }
     _rooms.clear();
     _connectingRooms.clear();
+    _localParticipantIdsByRoom.clear();
     _lastStates.clear();
     // Do NOT clear _activeRoomName, so UI stays ready to resume.
     notifyListeners();
@@ -243,7 +279,7 @@ class ConnectionManager extends ChangeNotifier {
       token,
       groupName,
       dataRoomName: groupName,
-      identity: identity ?? _localParticipantId ?? _nodeId,
+      identity: identity ?? getLocalParticipantIdForRoom(groupName) ?? _nodeId,
       syncData: false,
       isInviteRoom: true,
       setActive: setActive,
@@ -386,6 +422,10 @@ class ConnectionManager extends ChangeNotifier {
         token: effectiveToken,
       );
 
+      if (identity != null && identity.isNotEmpty) {
+        _localParticipantIdsByRoom[roomName] = identity;
+      }
+
       // Guard: Skip if already connected
       if (_rooms.containsKey(roomName) &&
           _rooms[roomName]!.connectionState == ConnectionState.connected) {
@@ -405,8 +445,9 @@ class ConnectionManager extends ChangeNotifier {
 
       // Initialize Sync Dependencies (CRDT / TreeKEM)
       if (syncData) {
+        final localIdentity = resolveLocalParticipantIdForRoom(roomName);
         await _crdtService.initialize(
-          _nodeId,
+          localIdentity.isNotEmpty ? localIdentity : _nodeId,
           roomName,
           databaseName: dataRoomName,
         );
@@ -416,7 +457,7 @@ class ConnectionManager extends ChangeNotifier {
       if (syncData && setActive) _activeRoomName = roomName;
       notifyListeners();
 
-      await _securityService.initialize();
+      await _securityService.initializeForGroup(roomName);
 
       // Monitor for GroupSettings changes to update friendly name
       await _cancelCrdtSubscription(roomName);
@@ -570,7 +611,10 @@ class ConnectionManager extends ChangeNotifier {
         }
       }
 
-      _localParticipantId = _rooms[roomName]?.localParticipant?.identity;
+      final localId = _rooms[roomName]?.localParticipant?.identity;
+      if (localId != null && localId.isNotEmpty) {
+        _localParticipantIdsByRoom[roomName] = localId;
+      }
       notifyListeners();
 
       startJanitors();
@@ -651,6 +695,7 @@ class ConnectionManager extends ChangeNotifier {
     }
     _rooms.clear();
     _connectingRooms.clear();
+    _localParticipantIdsByRoom.clear();
     _lastStates.clear();
     super.dispose();
   }

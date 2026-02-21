@@ -5,7 +5,6 @@ import 'encryption_provider.dart';
 import 'connection_manager_provider.dart';
 import 'key_manager_provider.dart';
 import 'handshake_handler_provider.dart';
-import 'node_id_provider.dart';
 import 'hybrid_time_provider.dart';
 
 final Provider<DataBroadcaster> dataBroadcasterProvider =
@@ -20,6 +19,8 @@ final Provider<DataBroadcaster> dataBroadcasterProvider =
             .getGroupKey(room, allowWait: allowWait),
         getEncryptionKey: (roomName, id) =>
             ref.read(handshakeHandlerProvider).getEncryptionKey(roomName, id),
-        getLocalParticipantId: () => ref.read(nodeIdProvider),
+        getLocalParticipantIdForRoom: (roomName) => ref
+            .read(connectionManagerProvider)
+            .resolveLocalParticipantIdForRoom(roomName),
       );
     });

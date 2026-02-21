@@ -36,7 +36,7 @@ class PacketHandler {
   final TreeKemHandler _treekemHandler;
   final KeyManager _keyManager;
 
-  final String Function() _getLocalParticipantId;
+  final String Function(String roomName) _getLocalParticipantIdForRoom;
   final Function(String roomName) _broadcastConsistencyCheck;
   final Function(String roomName, String targetId, P2PPacket packet)
   _sendSecurePacket;
@@ -45,7 +45,8 @@ class PacketHandler {
   final Function(String roomName, String targetId) onGroupKeyShared;
   final Function(String roomName, SecretKey key) onGroupKeyUpdated;
   final Function(String roomName, String peerId) onPeerHandshake;
-  final String? Function() _getLocalUserProfileJson;
+  final Future<String?> Function(String roomName)
+  _getLocalUserProfileJsonForRoom;
 
   // State
   // Map of RoomId -> Session Key (for unicast rooms)
@@ -67,7 +68,7 @@ class PacketHandler {
     required SyncProtocol syncProtocol,
     required TreeKemHandler treekemHandler,
     required KeyManager keyManager,
-    required String Function() getLocalParticipantId,
+    required String Function(String roomName) getLocalParticipantIdForRoom,
     required Function(String roomName) broadcastConsistencyCheck,
     required Function(String roomName, String targetId, P2PPacket packet)
     sendSecurePacket,
@@ -76,7 +77,8 @@ class PacketHandler {
     required this.onGroupKeyShared,
     required this.onGroupKeyUpdated,
     required this.onPeerHandshake,
-    required String? Function() getLocalUserProfileJson,
+    required Future<String?> Function(String roomName)
+    getLocalUserProfileJsonForRoom,
   }) : _hybridTimeService = hybridTimeService,
        _securityService = securityService,
        _encryptionService = encryptionService,
@@ -88,11 +90,11 @@ class PacketHandler {
        _syncProtocol = syncProtocol,
        _treekemHandler = treekemHandler,
        _keyManager = keyManager,
-       _getLocalParticipantId = getLocalParticipantId,
+       _getLocalParticipantIdForRoom = getLocalParticipantIdForRoom,
        _broadcastConsistencyCheck = broadcastConsistencyCheck,
        _sendSecurePacket = sendSecurePacket,
        _broadcast = broadcast,
-       _getLocalUserProfileJson = getLocalUserProfileJson {
+       _getLocalUserProfileJsonForRoom = getLocalUserProfileJsonForRoom {
     _treekemHandler.keyUpdates.listen((event) {
       updateGroupKey(event.$1, event.$2);
     });
@@ -120,7 +122,7 @@ class PacketHandler {
         bytes: data.length,
       );
 
-      final localId = _getLocalParticipantId();
+      final localId = _getLocalParticipantIdForRoom(roomName);
       if (packet.targetId.isNotEmpty && packet.targetId != localId) {
         return;
       }
@@ -213,10 +215,10 @@ class PacketHandler {
       return;
     }
 
-    final profileJson = _getLocalUserProfileJson();
+    final profileJson = await _getLocalUserProfileJsonForRoom(roomName);
     if (profileJson == null || profileJson.isEmpty) return;
 
-    final localId = _getLocalParticipantId();
+    final localId = _getLocalParticipantIdForRoom(roomName);
     if (localId.isEmpty) return;
 
     _lastProfileBroadcast[roomName] = now;
@@ -255,7 +257,7 @@ class PacketHandler {
       final welcomePacket = P2PPacket()
         ..type = P2PPacket_PacketType.UNICAST_REQ
         ..requestId = const Uuid().v4()
-        ..senderId = _getLocalParticipantId()
+        ..senderId = _getLocalParticipantIdForRoom(roomName)
         ..payload = utf8.encode(
           jsonEncode({
             'type': 'Treekem_WELCOME',
@@ -294,7 +296,7 @@ class PacketHandler {
         // So yes, we can use UNICAST_REQ type even if broadcast,
         // IF the receivers logic (_handleUnicastReq) supports the payload.
         ..requestId = const Uuid().v4()
-        ..senderId = _getLocalParticipantId()
+        ..senderId = _getLocalParticipantIdForRoom(roomName)
         ..payload = utf8.encode(
           jsonEncode({
             'type': 'Treekem_UPDATE',
@@ -329,7 +331,7 @@ class PacketHandler {
     final updatePacket = P2PPacket()
       ..type = P2PPacket_PacketType.UNICAST_REQ
       ..requestId = const Uuid().v4()
-      ..senderId = _getLocalParticipantId()
+      ..senderId = _getLocalParticipantIdForRoom(roomName)
       ..payload = utf8.encode(
         jsonEncode({
           'type': 'Treekem_UPDATE',
@@ -532,7 +534,7 @@ class PacketHandler {
         );
         break;
       case P2PPacket_PacketType.SYNC_CLAIM:
-        _syncProtocol.handleSyncClaim(packet);
+        _syncProtocol.handleSyncClaim(roomName, packet);
         break;
       case P2PPacket_PacketType.DATA_CHUNK:
         await _mergeDataChunk(roomName, packet);
@@ -603,6 +605,7 @@ class PacketHandler {
           t0: t0,
           t1: t1,
           t2: t2,
+          localParticipantId: _getLocalParticipantIdForRoom(roomName),
         );
         await _broadcast(roomName, pong);
         return true;
@@ -651,6 +654,7 @@ class PacketHandler {
           t0: t0,
           t1: t1,
           t2: t2,
+          localParticipantId: _getLocalParticipantIdForRoom(roomName),
         );
         await _broadcast(roomName, pong);
       } else if (type == 'SYNC_PONG') {

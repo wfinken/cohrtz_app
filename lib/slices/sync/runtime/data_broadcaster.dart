@@ -22,7 +22,7 @@ class DataBroadcaster {
   final Future<SecretKey> Function(String roomName, {bool allowWait})
   _getGroupKey;
   final List<int>? Function(String roomName, String identity) _getEncryptionKey;
-  final String Function() _getLocalParticipantId;
+  final String Function(String roomName) _getLocalParticipantIdForRoom;
 
   DataBroadcaster({
     required SecurityService securityService,
@@ -33,14 +33,14 @@ class DataBroadcaster {
     getGroupKey,
     required List<int>? Function(String roomName, String identity)
     getEncryptionKey,
-    required String Function() getLocalParticipantId,
+    required String Function(String roomName) getLocalParticipantIdForRoom,
   }) : _securityService = securityService,
        _encryptionService = encryptionService,
        _hybridTimeService = hybridTimeService,
        _getConnectionManager = getConnectionManager,
        _getGroupKey = getGroupKey,
        _getEncryptionKey = getEncryptionKey,
-       _getLocalParticipantId = getLocalParticipantId;
+       _getLocalParticipantIdForRoom = getLocalParticipantIdForRoom;
 
   Future<void> broadcast(String roomName, P2PPacket packet) async {
     final room = _getConnectionManager().getRoom(roomName);
@@ -346,7 +346,7 @@ class DataBroadcaster {
       final unicastPacket = P2PPacket()
         ..type = packet.type
         ..requestId = packet.requestId
-        ..senderId = _getLocalParticipantId()
+        ..senderId = _getLocalParticipantIdForRoom(roomName)
         ..physicalTime = packet.physicalTime
         ..logicalTime = packet.logicalTime
         ..encrypted = true

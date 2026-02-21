@@ -7,10 +7,11 @@ import 'package:uuid/uuid.dart';
 import 'package:cohortz/shared/config/app_config.dart';
 import 'package:http/http.dart' as http;
 
-import 'package:cohortz/shared/security/identity_service.dart';
+import 'package:cohortz/shared/security/group_identity_service.dart';
 import 'package:cohortz/slices/permissions_core/permission_flags.dart';
 import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
 import 'package:cohortz/slices/dashboard_shell/models/system_model.dart';
+import 'package:cohortz/slices/dashboard_shell/models/user_model.dart';
 import 'package:cohortz/slices/permissions_feature/state/member_repository.dart';
 import 'package:cohortz/slices/permissions_feature/state/role_repository.dart';
 import 'package:cohortz/slices/permissions_feature/models/member_model.dart';
@@ -32,7 +33,7 @@ import '../group_connection_status.dart';
 class InviteJoinProcess implements SyncProcess {
   final SyncService _syncService;
   final KeyManager _keyManager;
-  final IdentityService _identityService;
+  final GroupIdentityService _groupIdentityService;
   final CrdtService _crdtService;
   final HybridTimeService _hybridTimeService;
   final void Function(ConnectionProcessType) _onProcessStart;
@@ -42,14 +43,14 @@ class InviteJoinProcess implements SyncProcess {
   InviteJoinProcess({
     required SyncService syncService,
     required KeyManager keyManager,
-    required IdentityService identityService,
+    required GroupIdentityService groupIdentityService,
     required CrdtService crdtService,
     required HybridTimeService hybridTimeService,
     required void Function(ConnectionProcessType) onProcessStart,
     required void Function(int, StepStatus) onStepUpdate,
   }) : _syncService = syncService,
        _keyManager = keyManager,
-       _identityService = identityService,
+       _groupIdentityService = groupIdentityService,
        _crdtService = crdtService,
        _hybridTimeService = hybridTimeService,
        _onProcessStart = onProcessStart,
@@ -75,22 +76,20 @@ class InviteJoinProcess implements SyncProcess {
     throw Exception('Failed to fetch token: ${response.body}');
   }
 
-  Future<void> executeCreate(String roomName) async {
-    final userProfile = _identityService.profile;
-    if (userProfile == null) {
-      throw Exception('No user identity found. Please restart the app.');
-    }
-
+  Future<void> executeCreate(
+    String roomName, {
+    required UserProfile profile,
+  }) async {
     // Start Process
     _onProcessStart(ConnectionProcessType.create);
     _onStepUpdate(0, StepStatus.current); // Checking invite room
 
     // Probe invite room to see if it exists.
-    final inviteToken = await _fetchToken(roomName, userProfile.id);
+    final inviteToken = await _fetchToken(roomName, profile.id);
     await _syncService.joinInviteRoom(
       inviteToken,
       roomName,
-      identity: userProfile.id,
+      identity: profile.id,
     );
     _onStepUpdate(0, StepStatus.completed);
 
@@ -98,6 +97,11 @@ class InviteJoinProcess implements SyncProcess {
 
     _onStepUpdate(1, StepStatus.current); // Generating data room
     final dataRoomId = _uuid.v7();
+    final dataRoomProfile = await _groupIdentityService.ensureForGroup(
+      groupId: dataRoomId,
+      displayName: profile.displayName,
+      fallbackIdentity: profile.id,
+    );
 
     final groupSettings = GroupSettings(
       id: 'group_settings',
@@ -105,10 +109,10 @@ class InviteJoinProcess implements SyncProcess {
       createdAt: _hybridTimeService.getAdjustedTimeLocal(),
       logicalTime: _hybridTimeService.nextLogicalTime(),
       dataRoomName: dataRoomId,
-      ownerId: userProfile.id,
+      ownerId: dataRoomProfile.id,
     );
 
-    final dataToken = await _fetchToken(dataRoomId, userProfile.id);
+    final dataToken = await _fetchToken(dataRoomId, dataRoomProfile.id);
     _onStepUpdate(1, StepStatus.completed);
 
     _onStepUpdate(
@@ -118,7 +122,7 @@ class InviteJoinProcess implements SyncProcess {
     await _syncService.connect(
       dataToken,
       dataRoomId,
-      identity: userProfile.id,
+      identity: dataRoomProfile.id,
       friendlyName: roomName,
       isHost: true,
     );
@@ -149,12 +153,12 @@ class InviteJoinProcess implements SyncProcess {
       permissions: PermissionFlags.defaultMember,
     );
 
-    await dataRoomRepo.saveUserProfile(userProfile);
+    await dataRoomRepo.saveUserProfile(dataRoomProfile);
     await dataRoomRepo.saveGroupSettings(groupSettings);
     await roleRepo.saveRole(ownerRole);
     await roleRepo.saveRole(memberRole);
     await memberRepo.saveMember(
-      GroupMember(id: userProfile.id, roleIds: [ownerRole.id]),
+      GroupMember(id: dataRoomProfile.id, roleIds: [ownerRole.id]),
     );
 
     _onStepUpdate(2, StepStatus.completed);
@@ -163,11 +167,11 @@ class InviteJoinProcess implements SyncProcess {
     _onStepUpdate(3, StepStatus.completed);
   }
 
-  Future<void> executeJoin(String roomName, String inviteCode) async {
-    final userProfile = _identityService.profile;
-    if (userProfile == null) {
-      throw Exception('No user identity found. Please restart the app.');
-    }
+  Future<void> executeJoin(
+    String roomName,
+    String inviteCode, {
+    required UserProfile profile,
+  }) async {
     if (inviteCode.isEmpty) {
       throw Exception('Invite code is required to join a group.');
     }
@@ -175,13 +179,13 @@ class InviteJoinProcess implements SyncProcess {
     _onProcessStart(ConnectionProcessType.join);
     _onStepUpdate(0, StepStatus.current); // Joining invite room
 
-    final token = await _fetchToken(roomName, userProfile.id);
+    final token = await _fetchToken(roomName, profile.id);
 
     try {
       await _syncService.connect(
         token,
         roomName,
-        identity: userProfile.id,
+        identity: profile.id,
         inviteCode: inviteCode,
         isHost: false,
       );
@@ -203,12 +207,17 @@ class InviteJoinProcess implements SyncProcess {
 
         _onStepUpdate(2, StepStatus.current); // Transitioning to secure mesh
         await _keyManager.clearGroupKey(e.dataRoomUUID);
-        final dataToken = await _fetchToken(e.dataRoomUUID, userProfile.id);
+        final dataRoomProfile = await _groupIdentityService.ensureForGroup(
+          groupId: e.dataRoomUUID,
+          displayName: profile.displayName,
+          fallbackIdentity: profile.id,
+        );
+        final dataToken = await _fetchToken(e.dataRoomUUID, dataRoomProfile.id);
 
         await _syncService.connect(
           dataToken,
           e.dataRoomUUID,
-          identity: userProfile.id,
+          identity: dataRoomProfile.id,
           friendlyName: roomName,
           isHost: false,
         );
@@ -220,7 +229,7 @@ class InviteJoinProcess implements SyncProcess {
           e.dataRoomUUID,
           _hybridTimeService,
         );
-        await dataRoomRepo.saveUserProfile(userProfile);
+        await dataRoomRepo.saveUserProfile(dataRoomProfile);
 
         _onStepUpdate(3, StepStatus.completed);
         return;

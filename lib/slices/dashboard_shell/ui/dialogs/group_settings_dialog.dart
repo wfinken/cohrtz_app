@@ -339,10 +339,7 @@ class _GroupSettingsDialogState extends ConsumerState<GroupSettingsDialog> {
   ) async {
     try {
       final repo = ref.read(dashboardRepositoryProvider);
-      final localOwnerId =
-          ref.read(syncServiceProvider).identity ??
-          ref.read(identityServiceProvider).profile?.id ??
-          '';
+      final localOwnerId = ref.read(syncServiceProvider).identity ?? '';
 
       final newSettings =
           currentSettings?.copyWith(

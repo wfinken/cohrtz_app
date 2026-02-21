@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:cohortz/shared/utils/logging_service.dart';
 import 'package:cohortz/shared/config/app_config.dart';
-import 'package:cohortz/shared/security/identity_service.dart';
+import 'package:cohortz/shared/security/group_identity_service.dart';
 
 import '../group_connection_status.dart';
 import '../sync_service.dart';
@@ -18,7 +18,7 @@ import '../../../../shared/utils/jwt_utils.dart';
 class GroupConnectionProcess {
   final SyncService _syncService;
   final InviteJoinProcess _inviteJoinProcess;
-  final IdentityService _identityService;
+  final GroupIdentityService _groupIdentityService;
   final void Function(ConnectionProcessType) _onProcessStart;
   final void Function(int, StepStatus) _onStepUpdate;
   final void Function(String) _onProcessFail;
@@ -27,24 +27,24 @@ class GroupConnectionProcess {
   GroupConnectionProcess({
     required SyncService syncService,
     required InviteJoinProcess inviteJoinProcess,
-    required IdentityService identityService,
+    required GroupIdentityService groupIdentityService,
     required void Function(ConnectionProcessType) onProcessStart,
     required void Function(int, StepStatus) onStepUpdate,
     required void Function(String) onProcessFail,
     required void Function() onProcessComplete,
   }) : _syncService = syncService,
        _inviteJoinProcess = inviteJoinProcess,
-       _identityService = identityService,
+       _groupIdentityService = groupIdentityService,
        _onProcessStart = onProcessStart,
        _onStepUpdate = onStepUpdate,
        _onProcessFail = onProcessFail,
        _onProcessComplete = onProcessComplete;
 
-  Future<void> connect(String roomName, {String inviteCode = ''}) async {
-    final userProfile = _identityService.profile;
-    if (userProfile == null) {
-      throw Exception('No user identity found. Please restart the app.');
-    }
+  Future<void> connect(
+    String roomName, {
+    String inviteCode = '',
+    String? localDisplayName,
+  }) async {
     if (roomName.isEmpty) {
       throw Exception('Group Name is required.');
     }
@@ -74,8 +74,14 @@ class GroupConnectionProcess {
       if (knownDataRoom.isNotEmpty && inviteCode.isEmpty) {
         final dataId = knownDataRoom['roomName'] ?? '';
         if (dataId.isNotEmpty) {
+          final existingIdentity = knownDataRoom['identity'];
+          final profile = await _groupIdentityService.ensureForGroup(
+            groupId: dataId,
+            displayName: localDisplayName,
+            fallbackIdentity: existingIdentity,
+          );
           cleanupRoomIds.add(dataId);
-          final token = await _fetchToken(dataId, userProfile.id);
+          final token = await _fetchToken(dataId, profile.id);
 
           _onStepUpdate(1, StepStatus.completed);
           _onStepUpdate(2, StepStatus.current); // Connecting
@@ -83,17 +89,17 @@ class GroupConnectionProcess {
           await _syncService.connect(
             token,
             dataId,
-            identity: userProfile.id,
+            identity: profile.id,
             friendlyName: roomName,
           );
 
           if (dataId != roomName) {
             // Invite room join... invisible step?
-            final inviteToken = await _fetchToken(roomName, userProfile.id);
+            final inviteToken = await _fetchToken(roomName, profile.id);
             await _syncService.joinInviteRoom(
               inviteToken,
               roomName,
-              identity: userProfile.id,
+              identity: profile.id,
             );
           }
           _onStepUpdate(2, StepStatus.completed);
@@ -103,15 +109,29 @@ class GroupConnectionProcess {
       }
 
       if (inviteCode.isEmpty) {
+        if (localDisplayName == null || localDisplayName.trim().isEmpty) {
+          throw Exception('Display name is required to create a group.');
+        }
+        final profile = await _groupIdentityService.ensureForGroup(
+          groupId: roomName,
+          displayName: localDisplayName,
+        );
         // executeCreate will handle its own reporting if we pass the callbacks...
-        // But _inviteJoinProcess also needs to be updated to accept these callbacks?
-        // Or we pass the callbacks to executeCreate?
-        // _inviteJoinProcess is constructed with callbacks in providers.dart.
-        // So we just call it.
-        await _inviteJoinProcess.executeCreate(roomName);
+        await _inviteJoinProcess.executeCreate(roomName, profile: profile);
         _onProcessComplete();
       } else {
-        await _inviteJoinProcess.executeJoin(roomName, inviteCode);
+        if (localDisplayName == null || localDisplayName.trim().isEmpty) {
+          throw Exception('Display name is required to join a group.');
+        }
+        final profile = await _groupIdentityService.ensureForGroup(
+          groupId: roomName,
+          displayName: localDisplayName,
+        );
+        await _inviteJoinProcess.executeJoin(
+          roomName,
+          inviteCode,
+          profile: profile,
+        );
         _onProcessComplete();
       }
     } catch (e) {
@@ -189,7 +209,10 @@ class GroupConnectionProcess {
     _onProcessStart(ConnectionProcessType.autoJoin);
     _onStepUpdate(0, StepStatus.completed); // Checking saved groups (instant)
     var friendlyName = savedDetails['friendlyName'] ?? roomName;
-    final identity = savedDetails['identity'] ?? '';
+    final savedIdentity = savedDetails['identity'] ?? '';
+    final identity = savedIdentity.isNotEmpty
+        ? savedIdentity
+        : (await _groupIdentityService.ensureForGroup(groupId: roomName)).id;
     final isInviteRoom = savedDetails['isInviteRoom'] == 'true';
 
     // Fallback: If friendlyName is still a UUID (matches roomName), try looking it up in known groups.
@@ -244,6 +267,13 @@ class GroupConnectionProcess {
       } else {
         // _onStatusChanged('Connecting to $friendlyName...');
         await _syncService.connect(token, roomName, identity: identity);
+      }
+
+      if (!isInviteRoom) {
+        await _groupIdentityService.ensureForGroup(
+          groupId: roomName,
+          fallbackIdentity: identity,
+        );
       }
       _onStepUpdate(2, StepStatus.completed);
       _onProcessComplete();

@@ -100,10 +100,7 @@ class _RoleManagementDialogState extends ConsumerState<RoleManagementDialog> {
     final membersAsync = ref.watch(membersProvider);
     final permissionsAsync = ref.watch(currentUserPermissionsProvider);
     final isOwner = ref.watch(currentUserIsOwnerProvider);
-    final myId =
-        ref.watch(syncServiceProvider.select((s) => s.identity)) ??
-        ref.watch(identityServiceProvider).profile?.id ??
-        '';
+    final myId = ref.watch(syncServiceProvider.select((s) => s.identity)) ?? '';
 
     return rolesAsync.when(
       data: (roles) {

@@ -182,8 +182,8 @@ class _ConnectionCreateViewState extends State<ConnectionCreateView> {
                   child: ElevatedButton.icon(
                     onPressed: () =>
                         widget.onCreate(groupController.text.trim()),
-                    icon: const Icon(Icons.bolt, size: 20),
-                    label: const Text('Create Group'),
+                    icon: const Icon(Icons.arrow_forward, size: 20),
+                    label: const Text('Next Step'),
                   ),
                 ),
               ],
