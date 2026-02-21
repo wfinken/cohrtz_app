@@ -9,6 +9,7 @@ import 'package:cohortz/slices/permissions_feature/state/role_providers.dart';
 import 'package:cohortz/slices/permissions_feature/models/role_model.dart';
 import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
 import 'package:cohortz/slices/dashboard_shell/models/system_model.dart';
+import 'package:cohortz/slices/members/ui/utils/role_sorting.dart';
 import '../../../../app/di/app_providers.dart';
 
 class InviteDialog extends ConsumerStatefulWidget {
@@ -35,10 +36,11 @@ class _InviteDialogState extends ConsumerState<InviteDialog> {
       orElse: () => false,
     );
 
-    final roles = rolesAsync
-        .maybeWhen(data: (data) => data, orElse: () => const <Role>[])
-        .where((role) => role.name.toLowerCase() != 'owner')
-        .toList();
+    final roles = sortRolesByPermissionLevel(
+      rolesAsync
+          .maybeWhen(data: (data) => data, orElse: () => const <Role>[])
+          .where((role) => !isOwnerRole(role)),
+    );
     final defaultRole = _resolveDefaultRole(roles);
     if (_selectedRoleId == null && defaultRole != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -62,8 +64,7 @@ class _InviteDialogState extends ConsumerState<InviteDialog> {
         return role;
       }
     }
-    final sorted = [...roles]..sort((a, b) => a.position.compareTo(b.position));
-    return sorted.first;
+    return roles.last;
   }
 
   String _inviteRoleLabel(GroupInvite invite, Map<String, Role> roleById) {

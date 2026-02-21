@@ -5,6 +5,7 @@ import 'package:cohortz/slices/permissions_core/permission_flags.dart';
 import 'package:cohortz/shared/theme/tokens/dialog_button_styles.dart';
 import 'package:cohortz/slices/permissions_feature/state/role_providers.dart';
 import 'package:cohortz/slices/permissions_feature/models/role_model.dart';
+import 'package:cohortz/slices/members/ui/utils/role_sorting.dart';
 
 class RoleEditorDialog extends ConsumerStatefulWidget {
   final Role role;
@@ -30,6 +31,9 @@ class _RoleEditorDialogState extends ConsumerState<RoleEditorDialog> {
   late int _color;
   late int _permissions;
   late bool _isHoisted;
+  bool get _isOwnerRole => isOwnerRole(widget.role);
+  bool get _canEdit => widget.canEdit && !_isOwnerRole;
+  bool get _canDelete => widget.canDelete && !_isOwnerRole;
 
   final List<int> _palette = const [
     0xFFE53935,
@@ -249,7 +253,7 @@ class _RoleEditorDialogState extends ConsumerState<RoleEditorDialog> {
                 ),
                 _PermissionToggleCell(
                   value: (_permissions & group.view) != 0,
-                  enabled: widget.canEdit,
+                  enabled: _canEdit,
                   onChanged: (value) => _toggleWidgetPermission(
                     group: group,
                     level: _WidgetPermissionLevel.view,
@@ -259,7 +263,7 @@ class _RoleEditorDialogState extends ConsumerState<RoleEditorDialog> {
                 if (group.interact != null)
                   _PermissionToggleCell(
                     value: (_permissions & group.interact!) != 0,
-                    enabled: widget.canEdit,
+                    enabled: _canEdit,
                     onChanged: (value) => _toggleWidgetPermission(
                       group: group,
                       level: _WidgetPermissionLevel.interact,
@@ -272,7 +276,7 @@ class _RoleEditorDialogState extends ConsumerState<RoleEditorDialog> {
                   value:
                       group.create != null &&
                       (_permissions & group.create!) != 0,
-                  enabled: widget.canEdit,
+                  enabled: _canEdit,
                   onChanged: (value) => _toggleWidgetPermission(
                     group: group,
                     level: _WidgetPermissionLevel.create,
@@ -281,7 +285,7 @@ class _RoleEditorDialogState extends ConsumerState<RoleEditorDialog> {
                 ),
                 _PermissionToggleCell(
                   value: (_permissions & group.edit) != 0,
-                  enabled: widget.canEdit,
+                  enabled: _canEdit,
                   onChanged: (value) => _toggleWidgetPermission(
                     group: group,
                     level: _WidgetPermissionLevel.edit,
@@ -290,7 +294,7 @@ class _RoleEditorDialogState extends ConsumerState<RoleEditorDialog> {
                 ),
                 _PermissionToggleCell(
                   value: (_permissions & group.manage) != 0,
-                  enabled: widget.canEdit,
+                  enabled: _canEdit,
                   onChanged: (value) => _toggleWidgetPermission(
                     group: group,
                     level: _WidgetPermissionLevel.manage,
@@ -404,7 +408,7 @@ class _RoleEditorDialogState extends ConsumerState<RoleEditorDialog> {
   }
 
   Future<void> _save() async {
-    if (!widget.canEdit) return;
+    if (!_canEdit) return;
     final updated = widget.role.copyWith(
       name: _nameController.text.trim().isEmpty
           ? widget.role.name
@@ -418,7 +422,7 @@ class _RoleEditorDialogState extends ConsumerState<RoleEditorDialog> {
   }
 
   Future<void> _delete() async {
-    if (!widget.canDelete) return;
+    if (!_canDelete) return;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -446,7 +450,7 @@ class _RoleEditorDialogState extends ConsumerState<RoleEditorDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final disabledOpacity = widget.canEdit ? 1.0 : 0.45;
+    final disabledOpacity = _canEdit ? 1.0 : 0.45;
     final maxHeight = MediaQuery.of(context).size.height * 0.85;
 
     return Dialog(
@@ -474,10 +478,19 @@ class _RoleEditorDialogState extends ConsumerState<RoleEditorDialog> {
                           color: theme.colorScheme.onSurface,
                         ),
                       ),
+                      if (_isOwnerRole) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          'Owner role is protected and cannot be modified.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 16),
                       TextField(
                         controller: _nameController,
-                        enabled: widget.canEdit,
+                        enabled: _canEdit,
                         style: TextStyle(color: theme.colorScheme.onSurface),
                         decoration: InputDecoration(
                           labelText: 'Role Name',
@@ -513,7 +526,7 @@ class _RoleEditorDialogState extends ConsumerState<RoleEditorDialog> {
                       Opacity(
                         opacity: disabledOpacity,
                         child: IgnorePointer(
-                          ignoring: !widget.canEdit,
+                          ignoring: !_canEdit,
                           child: Wrap(
                             spacing: 8,
                             runSpacing: 8,
@@ -547,7 +560,7 @@ class _RoleEditorDialogState extends ConsumerState<RoleEditorDialog> {
                         title: 'Hoist Role',
                         subtitle: 'Show role separately in member list.',
                         value: _isHoisted,
-                        onChanged: widget.canEdit
+                        onChanged: _canEdit
                             ? (value) => setState(() => _isHoisted = value)
                             : null,
                       ),
@@ -564,14 +577,14 @@ class _RoleEditorDialogState extends ConsumerState<RoleEditorDialog> {
                         subtitle: 'Bypasses all permission checks.',
                         value:
                             (_permissions & PermissionFlags.administrator) != 0,
-                        onChanged: widget.canEdit ? _toggleAdministrator : null,
+                        onChanged: _canEdit ? _toggleAdministrator : null,
                       ),
                       _buildPermissionTile(
                         title: 'Manage Group',
                         subtitle: 'Edit name and avatar.',
                         value:
                             (_permissions & PermissionFlags.manageGroup) != 0,
-                        onChanged: widget.canEdit
+                        onChanged: _canEdit
                             ? (value) => _togglePermission(
                                 PermissionFlags.manageGroup,
                                 value,
@@ -583,7 +596,7 @@ class _RoleEditorDialogState extends ConsumerState<RoleEditorDialog> {
                         subtitle: 'Create and edit roles.',
                         value:
                             (_permissions & PermissionFlags.manageRoles) != 0,
-                        onChanged: widget.canEdit
+                        onChanged: _canEdit
                             ? (value) => _togglePermission(
                                 PermissionFlags.manageRoles,
                                 value,
@@ -595,7 +608,7 @@ class _RoleEditorDialogState extends ConsumerState<RoleEditorDialog> {
                         subtitle: 'Kick and ban members.',
                         value:
                             (_permissions & PermissionFlags.manageMembers) != 0,
-                        onChanged: widget.canEdit
+                        onChanged: _canEdit
                             ? (value) => _togglePermission(
                                 PermissionFlags.manageMembers,
                                 value,
@@ -607,7 +620,7 @@ class _RoleEditorDialogState extends ConsumerState<RoleEditorDialog> {
                         subtitle: 'Create and revoke invite codes.',
                         value:
                             (_permissions & PermissionFlags.manageInvites) != 0,
-                        onChanged: widget.canEdit
+                        onChanged: _canEdit
                             ? (value) => _togglePermission(
                                 PermissionFlags.manageInvites,
                                 value,
@@ -620,7 +633,7 @@ class _RoleEditorDialogState extends ConsumerState<RoleEditorDialog> {
                         value:
                             (_permissions & PermissionFlags.mentionEveryone) !=
                             0,
-                        onChanged: widget.canEdit
+                        onChanged: _canEdit
                             ? (value) => _togglePermission(
                                 PermissionFlags.mentionEveryone,
                                 value,
@@ -641,7 +654,7 @@ class _RoleEditorDialogState extends ConsumerState<RoleEditorDialog> {
                         value:
                             (_permissions & PermissionFlags.createChatRooms) !=
                             0,
-                        onChanged: widget.canEdit
+                        onChanged: _canEdit
                             ? (value) => _togglePermission(
                                 PermissionFlags.createChatRooms,
                                 value,
@@ -653,7 +666,7 @@ class _RoleEditorDialogState extends ConsumerState<RoleEditorDialog> {
                         subtitle: 'Rename existing channels.',
                         value:
                             (_permissions & PermissionFlags.editChatRooms) != 0,
-                        onChanged: widget.canEdit
+                        onChanged: _canEdit
                             ? (value) => _togglePermission(
                                 PermissionFlags.editChatRooms,
                                 value,
@@ -666,7 +679,7 @@ class _RoleEditorDialogState extends ConsumerState<RoleEditorDialog> {
                         value:
                             (_permissions & PermissionFlags.deleteChatRooms) !=
                             0,
-                        onChanged: widget.canEdit
+                        onChanged: _canEdit
                             ? (value) => _togglePermission(
                                 PermissionFlags.deleteChatRooms,
                                 value,
@@ -680,7 +693,7 @@ class _RoleEditorDialogState extends ConsumerState<RoleEditorDialog> {
                             (_permissions &
                                 PermissionFlags.startPrivateChats) !=
                             0,
-                        onChanged: widget.canEdit
+                        onChanged: _canEdit
                             ? (value) => _togglePermission(
                                 PermissionFlags.startPrivateChats,
                                 value,
@@ -694,7 +707,7 @@ class _RoleEditorDialogState extends ConsumerState<RoleEditorDialog> {
                             (_permissions &
                                 PermissionFlags.leavePrivateChats) !=
                             0,
-                        onChanged: widget.canEdit
+                        onChanged: _canEdit
                             ? (value) => _togglePermission(
                                 PermissionFlags.leavePrivateChats,
                                 value,
@@ -719,7 +732,7 @@ class _RoleEditorDialogState extends ConsumerState<RoleEditorDialog> {
               padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
               child: Row(
                 children: [
-                  if (widget.canDelete)
+                  if (_canDelete)
                     ElevatedButton(
                       onPressed: _delete,
                       style: dialogDestructiveButtonStyle(context),
@@ -732,7 +745,7 @@ class _RoleEditorDialogState extends ConsumerState<RoleEditorDialog> {
                   ),
                   const SizedBox(width: 8),
                   ElevatedButton(
-                    onPressed: widget.canEdit ? _save : null,
+                    onPressed: _canEdit ? _save : null,
                     child: const Text('Save'),
                   ),
                 ],
