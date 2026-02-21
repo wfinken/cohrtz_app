@@ -1,10 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:cohortz/features/dashboard/domain/dashboard_models.dart';
-import 'package:cohortz/features/dashboard/domain/user_model.dart';
-import 'package:cohortz/features/dashboard/domain/system_model.dart';
-import 'package:cohortz/features/notes/domain/note_model.dart';
-import 'package:cohortz/features/permissions/domain/member_model.dart';
-import 'package:cohortz/features/permissions/domain/role_model.dart';
+import 'package:cohortz/slices/dashboard_shell/models/dashboard_models.dart';
+import 'package:cohortz/slices/dashboard_shell/models/user_model.dart';
+import 'package:cohortz/slices/dashboard_shell/models/system_model.dart';
+import 'package:cohortz/slices/notes/models/note_model.dart';
+import 'package:cohortz/slices/permissions_feature/models/member_model.dart';
+import 'package:cohortz/slices/permissions_feature/models/role_model.dart';
 
 void main() {
   group('Comprehensive Serialization Tests', () {

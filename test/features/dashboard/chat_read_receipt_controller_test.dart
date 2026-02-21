@@ -1,5 +1,5 @@
-import 'package:cohortz/features/dashboard/data/local_dashboard_storage.dart';
-import 'package:cohortz/features/dashboard/presentation/controllers/chat_read_receipt_controller.dart';
+import 'package:cohortz/slices/dashboard_shell/state/local_dashboard_storage.dart';
+import 'package:cohortz/slices/chat/ui/controllers/chat_read_receipt_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _FakeLocalDashboardStorage extends LocalDashboardStorage {

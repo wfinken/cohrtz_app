@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:cohortz/features/dashboard/domain/system_model.dart';
+import 'package:cohortz/slices/dashboard_shell/models/system_model.dart';
 
 void main() {
   group('GroupInvite Tests', () {

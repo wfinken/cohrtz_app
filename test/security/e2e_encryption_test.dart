@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:cohortz/core/security/security_service.dart';
-import 'package:cohortz/core/security/encryption_service.dart';
+import 'package:cohortz/shared/security/security_service.dart';
+import 'package:cohortz/shared/security/encryption_service.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 void main() {

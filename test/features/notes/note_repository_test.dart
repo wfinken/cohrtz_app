@@ -1,8 +1,8 @@
-import 'package:cohortz/core/database/database.dart';
-import 'package:cohortz/features/notes/data/note_repository.dart';
-import 'package:cohortz/features/notes/domain/note_model.dart';
-import 'package:cohortz/features/sync/infrastructure/crdt_service.dart';
-import 'package:cohortz/features/sync/infrastructure/hybrid_time_service.dart';
+import 'package:cohortz/shared/database/database.dart';
+import 'package:cohortz/slices/notes/state/note_repository.dart';
+import 'package:cohortz/slices/notes/models/note_model.dart';
+import 'package:cohortz/slices/sync/runtime/crdt_service.dart';
+import 'package:cohortz/slices/sync/runtime/hybrid_time_service.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 

@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:cohortz/features/dashboard/domain/dashboard_models.dart';
+import 'package:cohortz/slices/dashboard_shell/models/dashboard_models.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 

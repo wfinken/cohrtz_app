@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:cohortz/core/utils/jwt_utils.dart';
+import 'package:cohortz/shared/utils/jwt_utils.dart';
 import 'dart:convert';
 
 void main() {

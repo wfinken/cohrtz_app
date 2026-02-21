@@ -1,5 +1,5 @@
-import 'package:cohortz/core/permissions/permission_flags.dart';
-import 'package:cohortz/core/permissions/permission_utils.dart';
+import 'package:cohortz/slices/permissions_core/permission_flags.dart';
+import 'package:cohortz/slices/permissions_core/permission_utils.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

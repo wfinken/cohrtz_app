@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:cohortz/core/security/treekem/ratchet_tree.dart';
+import 'package:cohortz/shared/security/treekem/ratchet_tree.dart';
 
 void main() {
   group('RatchetTree Indexing', () {

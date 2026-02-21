@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cohortz/features/dashboard/presentation/widgets/group_selection_rail.dart';
-import 'package:cohortz/features/dashboard/presentation/widgets/group_button.dart';
-import 'package:cohortz/features/sync/application/sync_service.dart';
-import 'package:cohortz/features/sync/application/processes/network_recovery_process.dart';
-import 'package:cohortz/core/providers.dart';
+import 'package:cohortz/slices/dashboard_shell/ui/widgets/group_selection_rail.dart';
+import 'package:cohortz/slices/dashboard_shell/ui/widgets/group_button.dart';
+import 'package:cohortz/slices/sync/orchestration/sync_service.dart';
+import 'package:cohortz/slices/sync/orchestration/processes/network_recovery_process.dart';
+import 'package:cohortz/app/di/app_providers.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../helpers/mocks.dart';

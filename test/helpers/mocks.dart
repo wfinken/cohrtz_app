@@ -1,12 +1,12 @@
-import 'package:cohortz/features/sync/infrastructure/connection_manager.dart';
-import 'package:cohortz/features/sync/infrastructure/group_manager.dart';
-import 'package:cohortz/features/sync/infrastructure/key_manager.dart';
-import 'package:cohortz/features/sync/infrastructure/crdt_service.dart';
-import 'package:cohortz/features/sync/infrastructure/treekem_handler.dart';
-import 'package:cohortz/features/sync/application/invite_handler.dart';
-import 'package:cohortz/core/security/security_service.dart';
-import 'package:cohortz/core/security/secure_storage_service.dart';
-import 'package:cohortz/core/security/encryption_service.dart';
+import 'package:cohortz/slices/sync/runtime/connection_manager.dart';
+import 'package:cohortz/slices/sync/runtime/group_manager.dart';
+import 'package:cohortz/slices/sync/runtime/key_manager.dart';
+import 'package:cohortz/slices/sync/runtime/crdt_service.dart';
+import 'package:cohortz/slices/sync/runtime/treekem_handler.dart';
+import 'package:cohortz/slices/sync/orchestration/invite_handler.dart';
+import 'package:cohortz/shared/security/security_service.dart';
+import 'package:cohortz/shared/security/secure_storage_service.dart';
+import 'package:cohortz/shared/security/encryption_service.dart';
 
 // --- Base Service Fakes ---
 
