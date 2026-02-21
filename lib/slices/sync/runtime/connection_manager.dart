@@ -754,6 +754,11 @@ class ConnectionManager extends ChangeNotifier {
     }
   }
 
+  @visibleForTesting
+  Future<void> pruneExpiredInvitesForTesting(String roomName) {
+    return _pruneExpiredInvites(roomName);
+  }
+
   Future<void> _pruneExpiredInvites(String roomName) async {
     try {
       final results = await _crdtService.query(
@@ -781,7 +786,8 @@ class ConnectionManager extends ChangeNotifier {
           await _crdtService.put(
             roomName,
             id,
-            jsonEncode(updatedSettings.toJson()),
+            // toJson already returns a JSON string; do not double-encode.
+            updatedSettings.toJson(),
             tableName: 'group_settings',
           );
           changed = true;
