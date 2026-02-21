@@ -374,24 +374,24 @@ class CrdtService extends ChangeNotifier {
     }
 
     try {
-      await crdt.transaction((txn) async {
-        // 1. Scrub the data (Privacy/Storage)
-        // We update the value to empty string so the physical payload is removed
-        // even if the record stays as a tombstone.
-        await txn.execute('UPDATE $tableName SET value = ? WHERE id = ?', [
-          '',
-          key,
-        ]);
+      // 1. Scrub the data (Privacy/Storage)
+      // We update the value to empty string so the physical payload is removed
+      // even if the record stays as a tombstone.
+      // We do this outside a transaction to ensure each operation triggers a distinct
+      // dataset change event, improving sync reliability.
+      await crdt.execute('UPDATE $tableName SET value = ? WHERE id = ?', [
+        '',
+        key,
+      ]);
 
-        // 2. Perform the logical delete (CRDT Tombstone)
-        await txn.execute('DELETE FROM $tableName WHERE id = ?', [key]);
-      });
+      // 2. Perform the logical delete (CRDT Tombstone)
+      await crdt.execute('DELETE FROM $tableName WHERE id = ?', [key]);
 
       // 3. Broadcast handling
       // We rely on onDatasetChangedCallback to broadcast the deletion
       // which is more robust and avoids duplicate logic.
     } catch (e) {
-      Log.e('CrdtService', 'Error during DELETE transaction', e);
+      Log.e('CrdtService', 'Error during DELETE operations', e);
     }
 
     // Notify Drift watchers that the table has changed
