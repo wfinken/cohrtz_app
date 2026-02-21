@@ -11,6 +11,7 @@ import 'package:cohortz/slices/permissions_feature/state/member_providers.dart';
 import 'package:cohortz/slices/permissions_feature/state/role_providers.dart';
 import 'package:cohortz/slices/permissions_feature/models/member_model.dart';
 import 'package:cohortz/slices/permissions_feature/models/role_model.dart';
+import 'package:cohortz/slices/members/ui/utils/role_sorting.dart';
 
 import 'role_editor_dialog.dart';
 
@@ -24,24 +25,6 @@ class RoleManagementDialog extends ConsumerStatefulWidget {
 
 class _RoleManagementDialogState extends ConsumerState<RoleManagementDialog> {
   final _uuid = const Uuid();
-  List<Role> _roles = [];
-  List<String> _roleOrder = [];
-
-  void _syncRoles(List<Role> roles) {
-    final order = roles.map((r) => r.id).toList();
-    if (_roleOrder.length != order.length || !_listsEqual(_roleOrder, order)) {
-      _roles = roles;
-      _roleOrder = order;
-    }
-  }
-
-  bool _listsEqual(List<String> a, List<String> b) {
-    if (a.length != b.length) return false;
-    for (var i = 0; i < a.length; i++) {
-      if (a[i] != b[i]) return false;
-    }
-    return true;
-  }
 
   Role? _highestRoleForMember(GroupMember? member, List<Role> roles) {
     if (member == null) return null;
@@ -55,45 +38,6 @@ class _RoleManagementDialogState extends ConsumerState<RoleManagementDialog> {
     return top;
   }
 
-  Future<void> _persistOrder({
-    required List<Role> roles,
-    required bool updateAll,
-    required Role? highestRole,
-  }) async {
-    if (roles.isEmpty) return;
-    final repo = ref.read(roleRepositoryProvider);
-
-    if (updateAll) {
-      for (int i = 0; i < roles.length; i++) {
-        final newPosition = (roles.length - i) * 10;
-        final role = roles[i];
-        if (role.position != newPosition) {
-          await repo.saveRole(role.copyWith(position: newPosition));
-        }
-      }
-      return;
-    }
-
-    if (highestRole == null) return;
-
-    final editableRoles = roles.where((role) {
-      return role.position < highestRole.position;
-    }).toList();
-
-    if (editableRoles.isEmpty) return;
-
-    var base = highestRole.position - 1;
-    if (base < editableRoles.length) base = editableRoles.length;
-
-    for (int i = 0; i < editableRoles.length; i++) {
-      final role = editableRoles[i];
-      final newPosition = base - i;
-      if (role.position != newPosition) {
-        await repo.saveRole(role.copyWith(position: newPosition));
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final rolesAsync = ref.watch(rolesProvider);
@@ -104,16 +48,19 @@ class _RoleManagementDialogState extends ConsumerState<RoleManagementDialog> {
 
     return rolesAsync.when(
       data: (roles) {
-        final sorted = List<Role>.from(roles)
-          ..sort((a, b) => b.position.compareTo(a.position));
-        _syncRoles(sorted);
+        final sortedRoles = sortRolesByPermissionLevel(roles);
 
         final members = membersAsync.value ?? [];
         final member = members.firstWhere(
           (m) => m.id == myId,
           orElse: () => GroupMember(id: myId, roleIds: const []),
         );
-        final highestRole = _highestRoleForMember(member, sorted);
+        final highestRole = _highestRoleForMember(member, roles);
+        final maxPosition = roles.fold<int>(
+          0,
+          (maxValue, role) =>
+              role.position > maxValue ? role.position : maxValue,
+        );
 
         final canManageRoles = permissionsAsync.maybeWhen(
           data: (permissions) =>
@@ -122,6 +69,7 @@ class _RoleManagementDialogState extends ConsumerState<RoleManagementDialog> {
         );
 
         bool canManageRole(Role role) {
+          if (isOwnerRole(role)) return false;
           if (isOwner) return true;
           if (highestRole == null) return false;
           return role.position < highestRole.position;
@@ -159,9 +107,6 @@ class _RoleManagementDialogState extends ConsumerState<RoleManagementDialog> {
                               '';
                           if (roomName.isEmpty) return;
 
-                          final maxPosition = sorted.isEmpty
-                              ? 0
-                              : sorted.first.position;
                           final newRole = Role(
                             id: 'role:${_uuid.v7()}',
                             groupId: roomName,
@@ -195,75 +140,13 @@ class _RoleManagementDialogState extends ConsumerState<RoleManagementDialog> {
                       style: TextStyle(color: Theme.of(context).hintColor),
                     ),
                   ),
-                ReorderableListView.builder(
-                  buildDefaultDragHandles: false,
+                ListView.builder(
                   shrinkWrap: true,
-                  itemCount: _roles.length,
-                  onReorder: (oldIndex, newIndex) async {
-                    if (!canManageRoles) return;
-                    if (_roles.isEmpty) return;
-
-                    if (newIndex > oldIndex) newIndex -= 1;
-
-                    final editableIndices = <int>[];
-                    for (int i = 0; i < _roles.length; i++) {
-                      if (canManageRole(_roles[i])) {
-                        editableIndices.add(i);
-                      }
-                    }
-
-                    if (!editableIndices.contains(oldIndex)) return;
-
-                    final sourceEditableIndex = editableIndices.indexOf(
-                      oldIndex,
-                    );
-                    final targetEditableIndex = editableIndices
-                        .where((i) => i < newIndex)
-                        .length
-                        .clamp(0, editableIndices.length);
-
-                    final editableRoles = _roles
-                        .where((role) => canManageRole(role))
-                        .toList();
-
-                    if (sourceEditableIndex < 0 ||
-                        sourceEditableIndex >= editableRoles.length) {
-                      return;
-                    }
-
-                    final movedRole = editableRoles.removeAt(
-                      sourceEditableIndex,
-                    );
-                    final insertIndex = targetEditableIndex.clamp(
-                      0,
-                      editableRoles.length,
-                    );
-                    editableRoles.insert(insertIndex, movedRole);
-
-                    final updated = <Role>[];
-                    int editableCursor = 0;
-                    for (int i = 0; i < _roles.length; i++) {
-                      if (canManageRole(_roles[i])) {
-                        updated.add(editableRoles[editableCursor]);
-                        editableCursor += 1;
-                      } else {
-                        updated.add(_roles[i]);
-                      }
-                    }
-
-                    setState(() {
-                      _roles = updated;
-                      _roleOrder = updated.map((r) => r.id).toList();
-                    });
-
-                    await _persistOrder(
-                      roles: _roles,
-                      updateAll: isOwner,
-                      highestRole: highestRole,
-                    );
-                  },
+                  primary: false,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: sortedRoles.length,
                   itemBuilder: (context, index) {
-                    final role = _roles[index];
+                    final role = sortedRoles[index];
                     final memberCount = members
                         .where((m) => m.roleIds.contains(role.id))
                         .length;
@@ -298,28 +181,27 @@ class _RoleManagementDialogState extends ConsumerState<RoleManagementDialog> {
                                 : Theme.of(context).hintColor,
                           ),
                         ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (!canEditRole)
-                              Icon(
+                        trailing: !canEditRole
+                            ? Icon(
                                 Icons.lock_outline,
                                 size: 18,
                                 color: Theme.of(context).hintColor,
-                              ),
-                            if (canEditRole)
-                              ReorderableDragStartListener(
-                                index: index,
-                                child: Icon(
-                                  Icons.drag_handle,
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                          ],
-                        ),
+                              )
+                            : null,
                         onTap: () async {
+                          if (isOwnerRole(role)) {
+                            await showDialog(
+                              context: context,
+                              builder: (_) => RoleEditorDialog(
+                                role: role,
+                                canEdit: false,
+                                canDelete: false,
+                                title: 'Owner Role',
+                              ),
+                            );
+                            return;
+                          }
+
                           if (!canEditRole) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(

@@ -11,6 +11,7 @@ import 'package:cohortz/slices/permissions_feature/state/role_providers.dart';
 import 'package:cohortz/slices/permissions_feature/models/member_model.dart';
 import 'package:cohortz/slices/permissions_feature/models/role_model.dart';
 import 'package:cohortz/slices/dashboard_shell/models/user_model.dart';
+import 'package:cohortz/slices/members/ui/utils/role_sorting.dart';
 
 class MemberRolesDialog extends ConsumerStatefulWidget {
   final UserProfile member;
@@ -96,8 +97,7 @@ class _MemberRolesDialogState extends ConsumerState<MemberRolesDialog> {
 
     return rolesAsync.when(
       data: (roles) {
-        final sortedRoles = List<Role>.from(roles)
-          ..sort((a, b) => b.position.compareTo(a.position));
+        final sortedRoles = sortRolesByPermissionLevel(roles);
 
         final members = membersAsync.value ?? [];
         final targetMember = members.firstWhere(
@@ -132,6 +132,7 @@ class _MemberRolesDialogState extends ConsumerState<MemberRolesDialog> {
         bool canEditRole(Role role) {
           if (!canManageRoles) return false;
           if (targetIsOwner) return false;
+          if (isOwnerRole(role)) return false;
           if (isOwner) return true;
           if (actorHighestRole == null) return false;
           return role.position < actorHighestRole.position;
