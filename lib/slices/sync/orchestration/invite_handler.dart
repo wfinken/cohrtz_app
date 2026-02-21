@@ -132,7 +132,16 @@ class InviteHandler {
             final settingsRowId = row['id'] as String?;
             final jsonStr = row['value'] as String?;
             if (settingsRowId == null || jsonStr == null) continue;
-            final settings = GroupSettingsMapper.fromJson(jsonStr);
+            GroupSettings settings;
+            try {
+              settings = GroupSettingsMapper.fromJson(jsonStr);
+            } catch (_) {
+              Log.w(
+                'InviteHandler',
+                'Skipping malformed group_settings row $settingsRowId in $otherRoomName while validating invite.',
+              );
+              continue;
+            }
 
             // Case-insensitive group name match
             if (settings.name.toLowerCase() == roomName.toLowerCase()) {
@@ -227,7 +236,10 @@ class InviteHandler {
                         rowSettings: otherSettings,
                       );
                     } catch (_) {
-                      // Ignore malformed legacy rows.
+                      Log.w(
+                        'InviteHandler',
+                        'Skipping malformed group_settings row $otherRowId in $otherRoomName during single-use cleanup.',
+                      );
                     }
                   }
 

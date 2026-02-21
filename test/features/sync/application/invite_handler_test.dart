@@ -180,5 +180,66 @@ void main() {
         expect(invites.where((i) => i['code'] == inviteCode), isEmpty);
       }
     });
+
+    test(
+      'Skips malformed rows and still consumes valid single-use invite',
+      () async {
+        const inviteRoomName = 'My Group';
+        const dataRoomName = 'data-room-123';
+        const inviteCode = 'CODE123';
+
+        final settings = GroupSettings(
+          id: 'group_settings',
+          name: inviteRoomName,
+          createdAt: DateTime.utc(2026, 1, 1),
+          dataRoomName: dataRoomName,
+          invites: [
+            GroupInvite(
+              code: inviteCode,
+              isSingleUse: true,
+              expiresAt: DateTime.now().add(const Duration(days: 1)),
+            ),
+          ],
+        );
+
+        final crdt = _RecordingCrdtService(
+          groupSettingsRows: [
+            {'id': 'group_settings:broken', 'value': '{'},
+            {'id': 'group_settings', 'value': jsonEncode(settings.toMap())},
+          ],
+        );
+
+        final broadcastPackets = <P2PPacket>[];
+        final handler = InviteHandler(
+          crdtService: crdt,
+          getLocalParticipantIdForRoom: (_) => 'host',
+          broadcast: (room, packet) async {
+            expect(room, inviteRoomName);
+            broadcastPackets.add(packet);
+          },
+          getConnectedRoomNames: () => <String>{dataRoomName},
+        );
+
+        final packet = P2PPacket()
+          ..type = P2PPacket_PacketType.INVITE_REQ
+          ..requestId = 'req-1'
+          ..senderId = 'joiner'
+          ..payload = utf8.encode(inviteCode);
+
+        await handler.handleInviteReq(inviteRoomName, packet);
+
+        expect(crdt.puts.length, 1);
+        expect(crdt.puts.single.key, 'group_settings');
+
+        final written =
+            jsonDecode(crdt.puts.single.value) as Map<String, dynamic>;
+        final invites = (written['invites'] as List).cast<Map>();
+        expect(invites.where((i) => i['code'] == inviteCode), isEmpty);
+
+        expect(broadcastPackets.length, 1);
+        expect(broadcastPackets.single.type, P2PPacket_PacketType.INVITE_ACK);
+        expect(utf8.decode(broadcastPackets.single.payload), dataRoomName);
+      },
+    );
   });
 }
