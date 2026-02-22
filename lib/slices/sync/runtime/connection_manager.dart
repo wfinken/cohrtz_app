@@ -25,6 +25,8 @@ class ConnectionManager extends ChangeNotifier {
   // roomName -> Room
   final Map<String, Room> _rooms = {};
   final Map<String, StreamSubscription<Uint8List>> _crdtSubscriptions = {};
+  final Map<String, StreamSubscription<List<Map<String, Object?>>>>
+  _groupSettingsSubscriptions = {};
 
   // Track rooms with in-progress connections
   final Set<String> _connectingRooms = {};
@@ -148,8 +150,42 @@ class ConnectionManager extends ChangeNotifier {
     }
   }
 
+  Future<void> _cancelGroupSettingsSubscription(String roomName) async {
+    final subscription = _groupSettingsSubscriptions.remove(roomName);
+    if (subscription == null) return;
+    try {
+      await subscription.cancel();
+    } catch (e) {
+      Log.e(
+        'ConnectionManager',
+        'Error cancelling GroupSettings stream for $roomName',
+        e,
+      );
+    }
+  }
+
+  Future<void> _startGroupSettingsSubscription(String roomName) async {
+    await _cancelGroupSettingsSubscription(roomName);
+    _groupSettingsSubscriptions[roomName] = _crdtService
+        .watch(roomName, 'SELECT id, value FROM group_settings')
+        .listen(
+          (_) async {
+            await _updateGroupMetadata(roomName);
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            Log.e(
+              'ConnectionManager',
+              'Error watching GroupSettings for $roomName',
+              error,
+              stackTrace,
+            );
+          },
+        );
+  }
+
   Future<void> _disconnectTrackedRoom(String roomName, Room room) async {
     await _cancelCrdtSubscription(roomName);
+    await _cancelGroupSettingsSubscription(roomName);
     _localParticipantIdsByRoom.remove(roomName);
     _lastStates.remove(roomName);
     onCleanupSync(roomName);
@@ -185,6 +221,7 @@ class ConnectionManager extends ChangeNotifier {
       await _disconnectTrackedRoom(roomName, room);
     } else {
       await _cancelCrdtSubscription(roomName);
+      await _cancelGroupSettingsSubscription(roomName);
       _lastStates.remove(roomName);
     }
     _connectingRooms.remove(roomName);
@@ -459,7 +496,8 @@ class ConnectionManager extends ChangeNotifier {
 
       await _securityService.initializeForGroup(roomName);
 
-      // Monitor for GroupSettings changes to update group metadata
+      // Local dataset stream only includes this node's writes.
+      // Keep this path focused on outbound sync broadcasting.
       await _cancelCrdtSubscription(roomName);
       _crdtSubscriptions[roomName] = _crdtService.getStream(roomName).listen((
         data,
@@ -467,15 +505,6 @@ class ConnectionManager extends ChangeNotifier {
         try {
           // Broadcast local changes to the room
           onLocalDataChanged(roomName, data);
-
-          // We can inspect the raw data to see if it's for 'group_settings'
-          // Or simpler: just query the table anytime we get an update?
-          // The event is raw bytes (changeset). Decoding it is costly if we do it for everything.
-          // Better: Perform a check periodically or just optimize the update trigger.
-          // Actually, let's just do a targeted check when connection is established and then
-          // relies on a lightweight check.
-          // For now, let's just trigger the check. It's a single row lookup usually.
-          await _updateGroupMetadata(roomName);
         } catch (e) {
           Log.e(
             'ConnectionManager',
@@ -484,7 +513,9 @@ class ConnectionManager extends ChangeNotifier {
           );
         }
       });
-      // Initial check
+      // Monitor group settings table for both local and remote updates.
+      await _startGroupSettingsSubscription(roomName);
+      // Initial metadata refresh in case the watch stream does not emit immediately.
       await _updateGroupMetadata(roomName);
       // Connect Loop
       int retryCount = 0;
@@ -690,6 +721,10 @@ class ConnectionManager extends ChangeNotifier {
       unawaited(subscription.cancel());
     }
     _crdtSubscriptions.clear();
+    for (final subscription in _groupSettingsSubscriptions.values.toList()) {
+      unawaited(subscription.cancel());
+    }
+    _groupSettingsSubscriptions.clear();
     for (final room in _rooms.values.toList()) {
       unawaited(room.disconnect().catchError((_) {}));
     }
@@ -757,6 +792,11 @@ class ConnectionManager extends ChangeNotifier {
   @visibleForTesting
   Future<void> pruneExpiredInvitesForTesting(String roomName) {
     return _pruneExpiredInvites(roomName);
+  }
+
+  @visibleForTesting
+  Future<void> startGroupSettingsWatchForTesting(String roomName) {
+    return _startGroupSettingsSubscription(roomName);
   }
 
   Future<void> _pruneExpiredInvites(String roomName) async {
