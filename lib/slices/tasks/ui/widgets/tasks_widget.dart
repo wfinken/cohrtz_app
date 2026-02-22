@@ -10,6 +10,7 @@ import '../../../../app/di/app_providers.dart';
 import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
 import 'package:cohortz/slices/dashboard_shell/models/dashboard_models.dart';
 import '../dialogs/add_task_dialog.dart';
+import '../dialogs/task_details_dialog.dart';
 import 'package:cohortz/slices/dashboard_shell/models/system_model.dart';
 import 'package:cohortz/slices/dashboard_shell/ui/widgets/skeleton_loader.dart';
 import 'package:cohortz/slices/dashboard_shell/ui/widgets/ghost_add_button.dart';
@@ -111,18 +112,8 @@ class TasksWidget extends ConsumerWidget {
                                   task.creatorId.isEmpty)) ||
                           (isCreator && task.creatorId.isNotEmpty);
                       return InkWell(
-                        onTap: canEditTask
-                            ? () {
-                                repo.saveTask(
-                                  task.copyWith(
-                                    isCompleted: !task.isCompleted,
-                                    completedBy: !task.isCompleted
-                                        ? myId ?? ''
-                                        : '',
-                                  ),
-                                );
-                              }
-                            : null,
+                        key: ValueKey('task_tile_${task.id}'),
+                        onTap: () => _showTaskDetailsDialog(context, task),
                         borderRadius: BorderRadius.circular(12),
                         child: Container(
                           margin: const EdgeInsets.only(bottom: 8),
@@ -135,27 +126,47 @@ class TasksWidget extends ConsumerWidget {
                           ),
                           child: Row(
                             children: [
-                              Container(
-                                width: 16,
-                                height: 16,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(4),
-                                  border: Border.all(
-                                    color: task.isCompleted
-                                        ? Theme.of(context).colorScheme.tertiary
-                                        : Theme.of(context).colorScheme.outline,
-                                  ),
-                                  color: task.isCompleted
-                                      ? Theme.of(context).colorScheme.tertiary
-                                      : null,
-                                ),
-                                child: task.isCompleted
-                                    ? const Icon(
-                                        Icons.check,
-                                        size: 12,
-                                        color: Colors.white,
+                              InkWell(
+                                key: ValueKey('task_checkbox_${task.id}'),
+                                onTap: canEditTask
+                                    ? () => _toggleTaskCompletion(
+                                        repo: repo,
+                                        task: task,
+                                        myId: myId,
                                       )
-                                    : null,
+                                    : () {},
+                                borderRadius: BorderRadius.circular(6),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(2),
+                                  child: Container(
+                                    width: 16,
+                                    height: 16,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(
+                                        color: task.isCompleted
+                                            ? Theme.of(
+                                                context,
+                                              ).colorScheme.tertiary
+                                            : Theme.of(
+                                                context,
+                                              ).colorScheme.outline,
+                                      ),
+                                      color: task.isCompleted
+                                          ? Theme.of(
+                                              context,
+                                            ).colorScheme.tertiary
+                                          : null,
+                                    ),
+                                    child: task.isCompleted
+                                        ? const Icon(
+                                            Icons.check,
+                                            size: 12,
+                                            color: Colors.white,
+                                          )
+                                        : null,
+                                  ),
+                                ),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
@@ -236,6 +247,9 @@ class TasksWidget extends ConsumerWidget {
                                 children: [
                                   if (canEditTask)
                                     IconButton(
+                                      key: ValueKey(
+                                        'task_visibility_${task.id}',
+                                      ),
                                       icon: Icon(
                                         Icons.visibility_outlined,
                                         size: 16,
@@ -263,6 +277,7 @@ class TasksWidget extends ConsumerWidget {
                                     ),
                                   if (task.isCompleted && canDeleteTask)
                                     IconButton(
+                                      key: ValueKey('task_delete_${task.id}'),
                                       icon: Icon(
                                         Icons.delete_outline,
                                         size: 16,
@@ -346,6 +361,26 @@ class TasksWidget extends ConsumerWidget {
       case TaskPriority.low:
         return Theme.of(context).colorScheme.primary;
     }
+  }
+
+  Future<void> _toggleTaskCompletion({
+    required DashboardRepository repo,
+    required TaskItem task,
+    required String? myId,
+  }) async {
+    await repo.saveTask(
+      task.copyWith(
+        isCompleted: !task.isCompleted,
+        completedBy: !task.isCompleted ? myId ?? '' : '',
+      ),
+    );
+  }
+
+  void _showTaskDetailsDialog(BuildContext context, TaskItem task) {
+    showDialog(
+      context: context,
+      builder: (_) => TaskDetailsDialog(task: task),
+    );
   }
 }
 
