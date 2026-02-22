@@ -12,13 +12,16 @@ import '../../../../slices/permissions_core/permission_utils.dart';
 import '../../../../slices/permissions_core/visibility_acl.dart';
 import '../../../../app/di/app_providers.dart';
 import '../../../../shared/theme/tokens/dialog_button_styles.dart';
+import '../../../../shared/widgets/profile_avatar.dart';
+import 'package:cohortz/slices/dashboard_shell/models/user_model.dart';
 import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
+import 'package:cohortz/slices/permissions_feature/models/logical_group_model.dart';
 import 'package:cohortz/slices/permissions_feature/state/logical_group_providers.dart';
 import 'package:cohortz/slices/permissions_feature/ui/widgets/visibility_group_selector.dart';
 import '../../models/note_model.dart';
 import 'package:cohortz/slices/dashboard_shell/ui/widgets/ghost_add_button.dart';
 
-enum _NotesMode { write, preview }
+enum _NotesMode { write, preview, options }
 
 enum _NotesView { list, editor }
 
@@ -133,6 +136,8 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
     final currentUserId = ref.watch(
       syncServiceProvider.select((service) => service.identity),
     );
+    final profiles = ref.watch(userProfilesProvider).value ?? const [];
+    final profileById = {for (final profile in profiles) profile.id: profile};
     final connectedParticipants = ref.watch(
       connectedParticipantIdentitiesProvider,
     );
@@ -216,6 +221,7 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
 
             _syncDocumentState(activeDocument);
             _syncPresenceStream(activeDocument.id);
+            final logicalGroups = ref.watch(logicalGroupsProvider);
 
             final currentEditors = _presenceStream == null
                 ? Stream.value(const <NoteEditorPresence>[])
@@ -232,20 +238,27 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
                 children: [
                   _buildTopRow(
                     context,
-                    documents,
-                    activeDocument,
                     currentEditors,
                     connectedParticipants,
+                    profileById,
                     currentUserId,
                     canEditNotes,
-                    canManageNotes,
-                    canAdd,
                   ),
                   _buildModeBar(context, canEditNotes),
-                  if (canEditNotes) _buildToolbar(context),
+                  if (canEditNotes && _mode == _NotesMode.write)
+                    _buildToolbar(context),
                   Expanded(
                     child: _mode == _NotesMode.write
                         ? _buildEditor(context, canEditNotes)
+                        : _mode == _NotesMode.options
+                        ? _buildOptionsPanel(
+                            context,
+                            documents: documents,
+                            activeDocument: activeDocument,
+                            canEditNotes: canEditNotes,
+                            canManageNotes: canManageNotes,
+                            logicalGroups: logicalGroups,
+                          )
                         : _buildPreview(context),
                   ),
                 ],
@@ -389,16 +402,12 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
 
   Widget _buildTopRow(
     BuildContext context,
-    List<Note> documents,
-    Note activeDocument,
     Stream<List<NoteEditorPresence>> currentEditors,
     Set<String> connectedParticipants,
+    Map<String, UserProfile> profileById,
     String? currentUserId,
     bool canEditNotes,
-    bool canManageNotes,
-    bool canCreateNotes,
   ) {
-    final logicalGroups = ref.watch(logicalGroupsProvider);
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
       decoration: BoxDecoration(
@@ -512,50 +521,9 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
                       )
                       .toList() ??
                   [];
-              return _buildPresenceRow(context, editors);
+              return _buildPresenceRow(context, editors, profileById);
             },
           ),
-          if (canEditNotes) ...[
-            const SizedBox(width: 8),
-            IconButton(
-              tooltip:
-                  'Visibility: ${visibilitySelectionSummary(selectedGroupIds: _activeVisibilityGroupIds, allGroups: logicalGroups)}',
-              onPressed: () async {
-                final selected = await showVisibilityGroupSelectorDialog(
-                  context: context,
-                  groups: logicalGroups,
-                  initialSelection: _activeVisibilityGroupIds,
-                );
-                if (selected == null || !mounted) return;
-                setState(() {
-                  _activeVisibilityGroupIds = normalizeVisibilityGroupIds(
-                    selected,
-                  );
-                });
-                await _persistNote();
-              },
-              icon: const Icon(Icons.visibility_outlined, size: 18),
-              style: IconButton.styleFrom(
-                foregroundColor: Theme.of(context).colorScheme.primary,
-                backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
-              ),
-            ),
-          ],
-          if (canManageNotes) ...[
-            const SizedBox(width: 8),
-            IconButton(
-              onPressed: () =>
-                  _confirmDeleteNote(context, activeDocument, documents),
-              tooltip: 'Delete document',
-              icon: const Icon(Icons.delete_outline, size: 18),
-              style: IconButton.styleFrom(
-                foregroundColor: Theme.of(context).colorScheme.error,
-                backgroundColor: Theme.of(
-                  context,
-                ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
-              ),
-            ),
-          ],
         ],
       ),
     );
@@ -573,6 +541,7 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
         children: [
           _buildModeTab(
             context: context,
+            tabKey: const ValueKey('notes_mode_view'),
             label: 'VIEW',
             icon: Icons.visibility_outlined,
             selected: _mode == _NotesMode.preview,
@@ -582,12 +551,22 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
           if (canEditNotes)
             _buildModeTab(
               context: context,
+              tabKey: const ValueKey('notes_mode_edit'),
               label: 'EDIT',
               icon: Icons.edit_outlined,
               selected: _mode == _NotesMode.write,
               onTap: () => _setMode(_NotesMode.write),
               enabled: true,
             ),
+          _buildModeTab(
+            context: context,
+            tabKey: const ValueKey('notes_mode_options'),
+            label: 'OPTIONS',
+            icon: Icons.tune_outlined,
+            selected: _mode == _NotesMode.options,
+            onTap: () => _setMode(_NotesMode.options),
+            enabled: true,
+          ),
         ],
       ),
     );
@@ -595,6 +574,7 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
 
   Widget _buildModeTab({
     required BuildContext context,
+    Key? tabKey,
     required String label,
     required IconData icon,
     required bool selected,
@@ -607,6 +587,7 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
         : (selected ? activeColor : Theme.of(context).hintColor);
 
     return InkWell(
+      key: tabKey,
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -727,6 +708,7 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
     ];
 
     return Container(
+      key: const ValueKey('notes_toolbar'),
       height: 42,
       decoration: BoxDecoration(
         border: Border(
@@ -754,6 +736,172 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
         separatorBuilder: (_, __) => const SizedBox(width: 2),
         itemCount: actions.length,
       ),
+    );
+  }
+
+  Widget _buildOptionsPanel(
+    BuildContext context, {
+    required List<Note> documents,
+    required Note activeDocument,
+    required bool canEditNotes,
+    required bool canManageNotes,
+    required List<LogicalGroup> logicalGroups,
+  }) {
+    final theme = Theme.of(context);
+    final onSurface = theme.colorScheme.onSurface;
+    final muted = theme.hintColor;
+    final panelColor = theme.colorScheme.surfaceContainerHighest.withValues(
+      alpha: 0.2,
+    );
+    final visibilitySummary = visibilitySelectionSummary(
+      selectedGroupIds: _activeVisibilityGroupIds,
+      allGroups: logicalGroups,
+    );
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text(
+          'Note options',
+          style: TextStyle(
+            color: onSurface,
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: panelColor,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: theme.dividerColor),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Visibility',
+                style: TextStyle(
+                  color: onSurface,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                visibilitySummary,
+                style: TextStyle(color: muted, fontSize: 12),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                key: const ValueKey('notes_options_visibility_button'),
+                onPressed: canEditNotes
+                    ? () async {
+                        final selected =
+                            await showVisibilityGroupSelectorDialog(
+                              context: context,
+                              groups: logicalGroups,
+                              initialSelection: _activeVisibilityGroupIds,
+                            );
+                        if (selected == null || !mounted) return;
+                        setState(() {
+                          _activeVisibilityGroupIds =
+                              normalizeVisibilityGroupIds(selected);
+                        });
+                        await _persistNote();
+                      }
+                    : null,
+                icon: const Icon(Icons.visibility_outlined, size: 16),
+                label: const Text('Edit visibility'),
+              ),
+              if (!canEditNotes) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'You do not have permission to update visibility.',
+                  style: TextStyle(color: muted, fontSize: 11),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: panelColor,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: theme.dividerColor),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Danger zone',
+                style: TextStyle(
+                  color: theme.colorScheme.error,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Delete this note permanently.',
+                style: TextStyle(color: muted, fontSize: 12),
+              ),
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                key: const ValueKey('notes_options_delete_button'),
+                onPressed: canManageNotes
+                    ? () =>
+                          _confirmDeleteNote(context, activeDocument, documents)
+                    : null,
+                icon: const Icon(Icons.delete_outline, size: 16),
+                label: const Text('Delete note'),
+              ),
+              if (!canManageNotes) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'You do not have permission to delete notes.',
+                  style: TextStyle(color: muted, fontSize: 11),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: panelColor,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: theme.dividerColor),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Metadata',
+                style: TextStyle(
+                  color: onSurface,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Title: ${activeDocument.title}',
+                style: TextStyle(color: muted, fontSize: 12),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Last updated: ${_formatDate(activeDocument.updatedAt)}',
+                style: TextStyle(color: muted, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -795,6 +943,7 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
   Widget _buildPresenceRow(
     BuildContext context,
     List<NoteEditorPresence> activeEditors,
+    Map<String, UserProfile> profileById,
   ) {
     final labelStyle = TextStyle(
       color: Theme.of(context).hintColor,
@@ -816,7 +965,7 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
         if (activeEditors.isEmpty)
           Text('Nobody', style: labelStyle)
         else
-          ..._buildPresenceChips(context, activeEditors),
+          ..._buildPresenceChips(context, activeEditors, profileById),
       ],
     );
   }
@@ -824,6 +973,7 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
   List<Widget> _buildPresenceChips(
     BuildContext context,
     List<NoteEditorPresence> editors,
+    Map<String, UserProfile> profileById,
   ) {
     const maxVisible = 5;
     final visible = editors.take(maxVisible).toList();
@@ -831,22 +981,23 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
 
     final chips = <Widget>[];
     for (final editor in visible) {
+      final profile = profileById[editor.userId];
+      final displayName = profile == null || profile.displayName.trim().isEmpty
+          ? editor.displayName
+          : profile.displayName.trim();
       chips.add(
         Padding(
           padding: const EdgeInsets.only(right: 6),
           child: Tooltip(
-            message: editor.displayName,
-            child: CircleAvatar(
-              radius: 13,
+            message: displayName,
+            child: ProfileAvatar(
+              displayName: displayName,
+              avatarBase64: profile?.avatarBase64 ?? '',
+              size: 26,
               backgroundColor: _colorFromHex(editor.colorHex),
-              child: Text(
-                _initials(editor.displayName),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              foregroundColor: Colors.white,
+              borderColor: Theme.of(context).colorScheme.surface,
+              borderWidth: 1.5,
             ),
           ),
         ),
@@ -1124,7 +1275,7 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
     setState(() {
       _mode = mode;
     });
-    if (_mode == _NotesMode.preview) {
+    if (_mode != _NotesMode.write) {
       _editorFocusNode.unfocus();
       _stopPresenceHeartbeat();
       unawaited(_clearPresence());
@@ -1332,13 +1483,6 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
     if (parsed == null) return const Color(0xFF64748B);
     if (hex.length <= 6) return Color(0xFF000000 | parsed);
     return Color(parsed);
-  }
-
-  String _initials(String value) {
-    final parts = value.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty);
-    if (parts.isEmpty) return '?';
-    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
-    return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
   }
 
   String _shortUserLabel(String userId) {
