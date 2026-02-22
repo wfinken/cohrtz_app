@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cohortz/slices/chat/ui/widgets/chat_widget.dart';
 import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
+import 'package:cohortz/slices/dashboard_shell/state/local_dashboard_storage.dart';
 import 'package:cohortz/slices/dashboard_shell/models/dashboard_models.dart';
 import 'package:cohortz/slices/dashboard_shell/models/user_model.dart';
 import 'package:cohortz/slices/sync/orchestration/sync_service.dart';
@@ -17,10 +18,10 @@ import '../../helpers/mocks.dart';
 // FakeCrdtService is in mocks.dart
 
 class FakeDashboardRepository extends DashboardRepository {
-  FakeDashboardRepository()
+  FakeDashboardRepository({String? roomName})
     : super(
         FakeCrdtService(),
-        null,
+        roomName,
         HybridTimeService(getLocalParticipantId: () => 'test-user-id'),
       );
 
@@ -34,6 +35,25 @@ class FakeDashboardRepository extends DashboardRepository {
   @override
   Future<void> saveMessage(ChatMessage message) async {
     _messages.add(message);
+  }
+}
+
+class FakeLocalDashboardStorage extends LocalDashboardStorage {
+  int writes = 0;
+  String? lastGroupId;
+  String? lastThreadId;
+  int? lastTimestamp;
+
+  @override
+  Future<void> saveReadStatus(
+    String groupId,
+    String threadId,
+    int timestamp,
+  ) async {
+    writes += 1;
+    lastGroupId = groupId;
+    lastThreadId = threadId;
+    lastTimestamp = timestamp;
   }
 }
 
@@ -169,5 +189,81 @@ void main() {
     expect(find.textContaining('Hi there'), findsOneWidget);
     expect(find.textContaining('You'), findsOneWidget); // For 'test-user-id'
     expect(find.textContaining('Other User'), findsOneWidget);
+  });
+
+  testWidgets('ChatWidget marks current thread read when accordion opens', (
+    WidgetTester tester,
+  ) async {
+    final generalThread = ChatThread(
+      id: ChatThread.generalId,
+      kind: ChatThread.channelKind,
+      name: 'general',
+      createdBy: '',
+      createdAt: DateTime.fromMillisecondsSinceEpoch(0),
+    );
+    final messageStream = StreamController<List<ChatMessage>>.broadcast();
+    addTearDown(messageStream.close);
+    final storage = FakeLocalDashboardStorage();
+    bool isOpen = false;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          dashboardRepositoryProvider.overrideWithValue(
+            FakeDashboardRepository(roomName: 'group-1'),
+          ),
+          localDashboardStorageProvider.overrideWithValue(storage),
+          chatThreadsStreamProvider.overrideWith(
+            (ref) => Stream.value([generalThread]),
+          ),
+          threadMessagesStreamProvider.overrideWith(
+            (ref, threadId) => messageStream.stream,
+          ),
+          userProfilesProvider.overrideWith((ref) => Stream.value([])),
+          syncServiceProvider.overrideWith(
+            () => FakeSyncServiceNotifier(FakeSyncService()),
+          ),
+        ],
+        child: MaterialApp(
+          home: StatefulBuilder(
+            builder: (context, setState) => Scaffold(
+              body: Column(
+                children: [
+                  TextButton(
+                    onPressed: () => setState(() => isOpen = !isOpen),
+                    child: const Text('toggle'),
+                  ),
+                  Expanded(
+                    child: ChatWidget(isAccordion: true, isOpen: isOpen),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    messageStream.add([
+      ChatMessage(
+        id: 'msg-1',
+        senderId: 'other-user',
+        threadId: ChatThread.generalId,
+        content: 'unread',
+        timestamp: DateTime.now(),
+      ),
+    ]);
+    await tester.pump();
+
+    expect(storage.writes, 0);
+
+    await tester.tap(find.text('toggle'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 450));
+
+    expect(storage.writes, 1);
+    expect(storage.lastGroupId, 'group-1');
+    expect(storage.lastThreadId, ChatThread.generalId);
+    expect(storage.lastTimestamp, isNotNull);
   });
 }

@@ -306,6 +306,10 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
         }
       },
     );
+
+    // Ensure we clear unread state when chat becomes visible even if the
+    // thread stream does not emit a new event after subscribing.
+    _markThreadRead(threadId, group);
   }
 
   void _markThreadRead(String threadId, String groupId) {
@@ -319,10 +323,24 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
     if (!isVisible) return;
 
     final now = ref.read(hybridTimeServiceProvider).getAdjustedTimeUtcMs();
+    final latestVisibleMessageMs = ref
+        .read(threadMessagesStreamProvider(threadId))
+        .maybeWhen(
+          data: (messages) => messages.fold<int>(
+            0,
+            (latest, msg) => msg.timestamp.millisecondsSinceEpoch > latest
+                ? msg.timestamp.millisecondsSinceEpoch
+                : latest,
+          ),
+          orElse: () => 0,
+        );
+    final readTimestampMs = latestVisibleMessageMs > now
+        ? latestVisibleMessageMs
+        : now;
     _readReceiptController.markVisible(
       groupId: groupId,
       threadId: threadId,
-      timestampMs: now,
+      timestampMs: readTimestampMs,
     );
   }
 
