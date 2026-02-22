@@ -5,6 +5,7 @@ import 'package:livekit_client/livekit_client.dart';
 import '../../../../app/di/app_providers.dart';
 import '../../../../shared/theme/tokens/app_semantic_colors.dart';
 import '../../../../shared/widgets/status_chip.dart';
+import 'package:cohortz/shared/widgets/profile_avatar.dart';
 import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
 import 'package:cohortz/slices/dashboard_shell/models/user_model.dart';
 import '../dashboard_edit_notifier.dart';
@@ -252,34 +253,25 @@ class _DashboardAppBarState extends ConsumerState<DashboardAppBar> {
                   if (profile.displayName.isNotEmpty) {
                     name = profile.displayName;
                   }
+                  return Positioned(
+                    left: index * 20.0,
+                    child: ProfileAvatar(
+                      displayName: name,
+                      avatarBase64: profile.avatarBase64,
+                      size: 32,
+                      borderWidth: 2,
+                      borderColor: Theme.of(context).scaffoldBackgroundColor,
+                    ),
+                  );
                 }
-                final initials = name.isNotEmpty
-                    ? name.substring(0, name.length >= 2 ? 2 : 1).toUpperCase()
-                    : '??';
 
                 return Positioned(
                   left: index * 20.0,
-                  child: Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceContainerHigh,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: Theme.of(context).scaffoldBackgroundColor,
-                        width: 2,
-                      ),
-                    ),
-                    child: Center(
-                      child: Text(
-                        initials,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurface,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 10,
-                        ),
-                      ),
-                    ),
+                  child: ProfileAvatar(
+                    displayName: name,
+                    size: 32,
+                    borderWidth: 2,
+                    borderColor: Theme.of(context).scaffoldBackgroundColor,
                   ),
                 );
               }),

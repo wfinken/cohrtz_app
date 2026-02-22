@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cohortz/shared/widgets/profile_avatar.dart';
 import 'group_flyout.dart';
 
 /// A stateful widget representing a group button in the Group Selection Rail.
@@ -16,6 +17,8 @@ class GroupButton extends StatefulWidget {
   final bool isActive;
   final bool isConnected;
   final int memberCount;
+  final String avatarBase64;
+  final String groupDescription;
   final VoidCallback? onTap;
 
   const GroupButton({
@@ -25,6 +28,8 @@ class GroupButton extends StatefulWidget {
     this.isActive = false,
     this.isConnected = false,
     this.memberCount = 0,
+    this.avatarBase64 = '',
+    this.groupDescription = '',
     this.onTap,
   });
 
@@ -58,6 +63,8 @@ class _GroupButtonState extends State<GroupButton> {
             groupName: widget.label,
             isConnected: widget.isConnected,
             memberCount: widget.memberCount,
+            groupAvatarBase64: widget.avatarBase64,
+            groupDescription: widget.groupDescription,
           ),
         ),
       ),
@@ -84,6 +91,7 @@ class _GroupButtonState extends State<GroupButton> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final hasAvatar = widget.avatarBase64.trim().isNotEmpty;
 
     return CompositedTransformTarget(
       link: _layerLink,
@@ -172,14 +180,31 @@ class _GroupButtonState extends State<GroupButton> {
                           duration: const Duration(milliseconds: 300),
                           switchInCurve: Curves.easeInOut,
                           switchOutCurve: Curves.easeInOut,
-                          child: Icon(
-                            widget.icon,
-                            key: ValueKey('${widget.icon}-${widget.isActive}'),
-                            size: 20,
-                            color: widget.isActive
-                                ? colorScheme.onPrimary
-                                : colorScheme.onSurfaceVariant,
-                          ),
+                          child: hasAvatar
+                              ? ProfileAvatar(
+                                  key: ValueKey(
+                                    '${widget.avatarBase64}-${widget.isActive}',
+                                  ),
+                                  displayName: widget.label,
+                                  avatarBase64: widget.avatarBase64,
+                                  size: 30,
+                                  borderWidth: 2,
+                                  borderColor: widget.isActive
+                                      ? colorScheme.onPrimary.withValues(
+                                          alpha: 0.75,
+                                        )
+                                      : colorScheme.surface,
+                                )
+                              : Icon(
+                                  widget.icon,
+                                  key: ValueKey(
+                                    '${widget.icon}-${widget.isActive}',
+                                  ),
+                                  size: 20,
+                                  color: widget.isActive
+                                      ? colorScheme.onPrimary
+                                      : colorScheme.onSurfaceVariant,
+                                ),
                         ),
                       ),
                     ],

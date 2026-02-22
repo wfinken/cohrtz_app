@@ -459,7 +459,7 @@ class ConnectionManager extends ChangeNotifier {
 
       await _securityService.initializeForGroup(roomName);
 
-      // Monitor for GroupSettings changes to update friendly name
+      // Monitor for GroupSettings changes to update group metadata
       await _cancelCrdtSubscription(roomName);
       _crdtSubscriptions[roomName] = _crdtService.getStream(roomName).listen((
         data,
@@ -475,7 +475,7 @@ class ConnectionManager extends ChangeNotifier {
           // Actually, let's just do a targeted check when connection is established and then
           // relies on a lightweight check.
           // For now, let's just trigger the check. It's a single row lookup usually.
-          await _updateGroupFriendlyName(roomName);
+          await _updateGroupMetadata(roomName);
         } catch (e) {
           Log.e(
             'ConnectionManager',
@@ -485,7 +485,7 @@ class ConnectionManager extends ChangeNotifier {
         }
       });
       // Initial check
-      await _updateGroupFriendlyName(roomName);
+      await _updateGroupMetadata(roomName);
       // Connect Loop
       int retryCount = 0;
       const maxRetries = 3;
@@ -824,12 +824,12 @@ class ConnectionManager extends ChangeNotifier {
     }
   }
 
-  Future<void> _updateGroupFriendlyName(String roomName) async {
+  Future<void> _updateGroupMetadata(String roomName) async {
     try {
       // Query ALL group_settings rows to handle migration/legacy cases robustly
       final results = await _crdtService.query(
         roomName,
-        'SELECT value FROM group_settings',
+        'SELECT id, value FROM group_settings',
       );
 
       if (results.isEmpty) return;
@@ -852,20 +852,25 @@ class ConnectionManager extends ChangeNotifier {
       if (settings != null) {
         final newName = settings.name;
         if (newName.isNotEmpty) {
-          // Check if we need to update
           final currentGroup = _groupManager.findGroup(roomName);
-          final currentName = currentGroup['friendlyName'];
+          final currentName = currentGroup['friendlyName'] ?? '';
+          final currentAvatar = currentGroup['avatarBase64'] ?? '';
+          final currentDescription = currentGroup['description'] ?? '';
 
-          if (currentName != newName) {
-            Log.i(
-              'ConnectionManager',
-              'Updating friendly name for $roomName to $newName',
-            );
+          final shouldUpdateMetadata =
+              currentName != newName ||
+              currentAvatar != settings.avatarBase64 ||
+              currentDescription != settings.description;
+
+          if (shouldUpdateMetadata) {
+            Log.i('ConnectionManager', 'Updating group metadata for $roomName');
             await _groupManager.saveKnownGroup(
               roomName,
               currentGroup['dataRoomName'] ?? roomName,
               currentGroup['identity'] ?? 'unknown',
               friendlyName: newName,
+              avatarBase64: settings.avatarBase64,
+              description: settings.description,
               isInviteRoom: currentGroup['isInviteRoom'] == 'true',
               isHost: currentGroup['isHost'] == 'true',
               token:
@@ -877,7 +882,7 @@ class ConnectionManager extends ChangeNotifier {
     } catch (e) {
       Log.e(
         'ConnectionManager',
-        'Failed to update friendly name for $roomName',
+        'Failed to update group metadata for $roomName',
         e,
       );
     }

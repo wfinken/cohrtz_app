@@ -10,6 +10,7 @@ import '../dialogs/member_roles_dialog.dart';
 
 import 'package:cohortz/slices/permissions_feature/state/member_providers.dart';
 import '../../../../app/di/app_providers.dart';
+import 'package:cohortz/shared/widgets/profile_avatar.dart';
 import '../dialogs/invite_dialog.dart';
 import 'package:cohortz/slices/dashboard_shell/ui/widgets/ghost_add_button.dart';
 
@@ -198,19 +199,10 @@ class UserListWidget extends ConsumerWidget {
               return LayoutBuilder(
                 builder: (context, constraints) {
                   final isCompactTile = constraints.maxWidth < 280;
-                  final avatar = CircleAvatar(
-                    backgroundColor: Theme.of(
-                      context,
-                    ).colorScheme.primaryContainer,
-                    child: Text(
-                      profile.displayName.isNotEmpty
-                          ? profile.displayName.substring(0, 1).toUpperCase()
-                          : '?',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onPrimaryContainer,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                  final avatar = ProfileAvatar(
+                    displayName: profile.displayName,
+                    avatarBase64: profile.avatarBase64,
+                    size: 40,
                   );
                   final statusIcon = Icon(
                     Icons.circle,

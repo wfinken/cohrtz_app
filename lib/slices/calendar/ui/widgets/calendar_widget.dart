@@ -10,6 +10,7 @@ import 'package:cohortz/slices/dashboard_shell/models/dashboard_models.dart';
 import 'package:cohortz/slices/dashboard_shell/models/user_model.dart';
 import 'package:cohortz/slices/dashboard_shell/models/system_model.dart';
 import 'package:cohortz/slices/permissions_feature/state/logical_group_providers.dart';
+import 'package:cohortz/shared/widgets/profile_avatar.dart';
 import '../dialogs/add_event_dialog.dart';
 import '../dialogs/event_details_dialog.dart';
 import 'package:cohortz/slices/dashboard_shell/ui/widgets/skeleton_loader.dart';
@@ -281,35 +282,14 @@ class CalendarWidget extends ConsumerWidget {
                 UserProfile(id: userId, displayName: '', publicKey: ''),
           );
 
-          final initials = profile.displayName.isNotEmpty
-              ? profile.displayName
-                    .substring(0, profile.displayName.length >= 2 ? 2 : 1)
-                    .toUpperCase()
-              : '?';
-
           return Positioned(
             left: index * 16.0,
-            child: Container(
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.tertiary,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: Theme.of(context).colorScheme.surface,
-                  width: 2,
-                ),
-              ),
-              child: Center(
-                child: Text(
-                  initials,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 9,
-                  ),
-                ),
-              ),
+            child: ProfileAvatar(
+              displayName: profile.displayName,
+              avatarBase64: profile.avatarBase64,
+              size: 24,
+              borderWidth: 2,
+              borderColor: Theme.of(context).colorScheme.surface,
             ),
           );
         }).toList(),

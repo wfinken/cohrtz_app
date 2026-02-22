@@ -36,6 +36,9 @@ dependencies:
     path: ../flutter_dashboard_grid
   dart_mappable: ^4.2.0
   flutter_background_service: ^5.0.0
+  crop_your_image: ^1.1.0
+  file_picker: ^8.1.4
+  image: ^4.2.0
 
 dev_dependencies:
   flutter_test:

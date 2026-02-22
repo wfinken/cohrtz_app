@@ -11,6 +11,7 @@ import 'package:cohortz/slices/dashboard_shell/models/dashboard_models.dart';
 
 import '../../../../app/di/app_providers.dart';
 import 'package:cohortz/slices/dashboard_shell/models/user_model.dart';
+import 'package:cohortz/shared/widgets/profile_avatar.dart';
 import '../widgets/calendar_widget.dart';
 import 'add_event_dialog.dart';
 
@@ -512,41 +513,14 @@ class _AttendeeStack extends StatelessWidget {
           child: Stack(
             children: List.generate(displayCount, (index) {
               final user = attendees[index];
-              final colors = [
-                Colors.indigo,
-                Colors.teal,
-                Colors.pink,
-                Colors.amber,
-                Colors.purple,
-              ];
-              final color = colors[index % colors.length];
-
               return Positioned(
                 left: index * (size - overlap),
-                child: Container(
-                  width: size,
-                  height: size,
-                  decoration: BoxDecoration(
-                    color: color,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: theme.colorScheme.surface,
-                      width: 2,
-                    ),
-                  ),
-                  child: Center(
-                    child: Text(
-                      user.displayName.isNotEmpty
-                          ? user.displayName[0].toUpperCase()
-                          : '?',
-                      style: const TextStyle(
-                        color:
-                            Colors.white, // Initials usually white for contrast
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
+                child: ProfileAvatar(
+                  displayName: user.displayName,
+                  avatarBase64: user.avatarBase64,
+                  size: size,
+                  borderWidth: 2,
+                  borderColor: theme.colorScheme.surface,
                 ),
               );
             }),

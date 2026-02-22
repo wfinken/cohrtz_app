@@ -55,6 +55,8 @@ class IdentityService extends ChangeNotifier {
       id: _profile!.id,
       displayName: name,
       publicKey: _profile!.publicKey,
+      avatarBase64: _profile!.avatarBase64,
+      bio: _profile!.bio,
     );
     await saveProfile(updatedProfile);
   }
@@ -65,6 +67,8 @@ class IdentityService extends ChangeNotifier {
       id: _profile!.id,
       displayName: _profile!.displayName,
       publicKey: publicKey,
+      avatarBase64: _profile!.avatarBase64,
+      bio: _profile!.bio,
     );
     await saveProfile(updatedProfile);
   }

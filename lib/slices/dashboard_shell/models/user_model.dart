@@ -7,10 +7,14 @@ class UserProfile with UserProfileMappable {
   final String id;
   final String displayName;
   final String publicKey;
+  final String avatarBase64;
+  final String bio;
 
   UserProfile({
     required this.id,
     required this.displayName,
     required this.publicKey,
+    this.avatarBase64 = '',
+    this.bio = '',
   });
 }
