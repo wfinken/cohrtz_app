@@ -4,12 +4,16 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import '../../../../slices/permissions_core/permission_flags.dart';
+import '../../../../slices/permissions_core/acl_group_ids.dart';
 import '../../../../slices/permissions_core/permission_providers.dart';
 import '../../../../slices/permissions_core/permission_utils.dart';
+import '../../../../slices/permissions_core/visibility_acl.dart';
 import '../../../../app/di/app_providers.dart';
 import '../../../../shared/theme/tokens/app_theme.dart';
 import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
 import 'package:cohortz/slices/dashboard_shell/models/dashboard_models.dart';
+import 'package:cohortz/slices/permissions_feature/state/logical_group_providers.dart';
+import 'package:cohortz/slices/permissions_feature/ui/widgets/visibility_group_selector.dart';
 
 class CreatePollDialog extends ConsumerStatefulWidget {
   const CreatePollDialog({super.key});
@@ -24,6 +28,7 @@ class _CreatePollDialogState extends ConsumerState<CreatePollDialog> {
   bool _isUrgent = false;
   PollMajorityPolicy _majorityPolicy = PollMajorityPolicy.simple;
   PollTiebreakerPolicy _tiebreakerPolicy = PollTiebreakerPolicy.statusQuo;
+  List<String> _visibilityGroupIds = const [AclGroupIds.everyone];
 
   @override
   void dispose() {
@@ -59,6 +64,7 @@ class _CreatePollDialogState extends ConsumerState<CreatePollDialog> {
       tiebreakerPolicy: _tiebreakerPolicy,
       majorityPolicy: _majorityPolicy,
       creatorId: creatorId,
+      visibilityGroupIds: normalizeVisibilityGroupIds(_visibilityGroupIds),
     );
 
     ref.read(dashboardRepositoryProvider).savePoll(newPoll);
@@ -165,6 +171,7 @@ class _CreatePollDialogState extends ConsumerState<CreatePollDialog> {
   @override
   Widget build(BuildContext context) {
     final permissionsAsync = ref.watch(currentUserPermissionsProvider);
+    final logicalGroups = ref.watch(logicalGroupsProvider);
     final permissions = permissionsAsync.value ?? PermissionFlags.none;
 
     final canCreatePolls = PermissionUtils.has(
@@ -486,6 +493,48 @@ class _CreatePollDialogState extends ConsumerState<CreatePollDialog> {
                                     ),
                                   ),
                                 ],
+                                const SizedBox(height: 16),
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: _sectionLabel(
+                                    context,
+                                    'Visibility',
+                                    icon: Icons.visibility_outlined,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  enabled: hasPermission,
+                                  title: Text(
+                                    visibilitySelectionSummary(
+                                      selectedGroupIds: _visibilityGroupIds,
+                                      allGroups: logicalGroups,
+                                    ),
+                                  ),
+                                  subtitle: const Text('Who can see this poll'),
+                                  trailing: const Icon(Icons.chevron_right),
+                                  onTap: !hasPermission
+                                      ? null
+                                      : () async {
+                                          final selected =
+                                              await showVisibilityGroupSelectorDialog(
+                                                context: context,
+                                                groups: logicalGroups,
+                                                initialSelection:
+                                                    _visibilityGroupIds,
+                                              );
+                                          if (selected == null || !mounted) {
+                                            return;
+                                          }
+                                          setState(() {
+                                            _visibilityGroupIds =
+                                                normalizeVisibilityGroupIds(
+                                                  selected,
+                                                );
+                                          });
+                                        },
+                                ),
                                 const SizedBox(height: 20),
                               ],
                             ),

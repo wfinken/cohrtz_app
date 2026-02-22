@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cohortz/slices/permissions_core/permission_flags.dart';
 import 'package:cohortz/slices/permissions_core/permission_providers.dart';
 import 'package:cohortz/slices/permissions_core/permission_utils.dart';
+import 'package:cohortz/slices/permissions_core/visibility_acl.dart';
+import 'package:cohortz/slices/permissions_feature/state/logical_group_providers.dart';
+import 'package:cohortz/slices/permissions_feature/ui/widgets/visibility_group_selector.dart';
 import '../../../../app/di/app_providers.dart';
 import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
 import 'package:cohortz/slices/dashboard_shell/models/dashboard_models.dart';
@@ -20,6 +23,7 @@ class TasksWidget extends ConsumerWidget {
     final tasksAsync = ref.watch(tasksStreamProvider);
     final settingsAsync = ref.watch(groupSettingsProvider);
     final groupType = settingsAsync.value?.groupType ?? GroupType.family;
+    final logicalGroups = ref.watch(logicalGroupsProvider);
     final permissionsAsync = ref.watch(currentUserPermissionsProvider);
     final canCreateTasks = permissionsAsync.maybeWhen(
       data: (permissions) =>
@@ -227,18 +231,50 @@ class TasksWidget extends ConsumerWidget {
                                   ],
                                 ),
                               ),
-                              if (task.isCompleted && canDeleteTask)
-                                IconButton(
-                                  icon: Icon(
-                                    Icons.delete_outline,
-                                    size: 16,
-                                    color: Theme.of(context).hintColor,
-                                  ),
-                                  onPressed: () {
-                                    repo.deleteTask(task.id);
-                                  },
-                                  tooltip: 'Delete Task',
-                                ),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (canEditTask)
+                                    IconButton(
+                                      icon: Icon(
+                                        Icons.visibility_outlined,
+                                        size: 16,
+                                        color: Theme.of(context).hintColor,
+                                      ),
+                                      onPressed: () async {
+                                        final selected =
+                                            await showVisibilityGroupSelectorDialog(
+                                              context: context,
+                                              groups: logicalGroups,
+                                              initialSelection:
+                                                  task.visibilityGroupIds,
+                                            );
+                                        if (selected == null) return;
+                                        await repo.saveTask(
+                                          task.copyWith(
+                                            visibilityGroupIds:
+                                                normalizeVisibilityGroupIds(
+                                                  selected,
+                                                ),
+                                          ),
+                                        );
+                                      },
+                                      tooltip: 'Edit Visibility',
+                                    ),
+                                  if (task.isCompleted && canDeleteTask)
+                                    IconButton(
+                                      icon: Icon(
+                                        Icons.delete_outline,
+                                        size: 16,
+                                        color: Theme.of(context).hintColor,
+                                      ),
+                                      onPressed: () {
+                                        repo.deleteTask(task.id);
+                                      },
+                                      tooltip: 'Delete Task',
+                                    ),
+                                ],
+                              ),
                             ],
                           ),
                         ),
@@ -315,5 +351,23 @@ class TasksWidget extends ConsumerWidget {
 
 final tasksStreamProvider = StreamProvider<List<TaskItem>>((ref) {
   final repo = ref.watch(dashboardRepositoryProvider);
-  return repo.watchTasks();
+  final myGroupIds = ref.watch(myLogicalGroupIdsProvider);
+  final isOwner = ref.watch(currentUserIsOwnerProvider);
+  final permissions = ref.watch(currentUserPermissionsProvider).value;
+  final bypass =
+      isOwner ||
+      (permissions != null &&
+          PermissionUtils.has(permissions, PermissionFlags.administrator));
+
+  return repo.watchTasks().map((tasks) {
+    return tasks
+        .where(
+          (task) => canViewByLogicalGroups(
+            itemGroupIds: task.visibilityGroupIds,
+            viewerGroupIds: myGroupIds,
+            bypass: bypass,
+          ),
+        )
+        .toList();
+  });
 });

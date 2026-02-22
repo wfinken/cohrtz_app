@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:dart_mappable/dart_mappable.dart';
+import 'package:cohortz/slices/permissions_core/acl_group_ids.dart';
 
 part 'poll_item.mapper.dart';
 
@@ -164,6 +165,7 @@ class PollItem with PollItemMappable {
   final PollMajorityPolicy majorityPolicy;
   final String creatorId;
   final PollVoteChoice? creatorVote;
+  final List<String> visibilityGroupIds;
 
   PollItem({
     required this.id,
@@ -180,6 +182,7 @@ class PollItem with PollItemMappable {
     this.majorityPolicy = PollMajorityPolicy.simple,
     this.creatorId = '',
     this.creatorVote,
+    this.visibilityGroupIds = const [AclGroupIds.everyone],
   });
 
   int get totalVotes => approvedCount + rejectedCount;

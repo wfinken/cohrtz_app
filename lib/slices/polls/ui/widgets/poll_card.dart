@@ -3,9 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cohortz/slices/permissions_core/permission_flags.dart';
 import 'package:cohortz/slices/permissions_core/permission_providers.dart';
 import 'package:cohortz/slices/permissions_core/permission_utils.dart';
+import 'package:cohortz/slices/permissions_core/visibility_acl.dart';
 import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
 import 'package:cohortz/slices/dashboard_shell/models/dashboard_models.dart';
 import '../../../../app/di/app_providers.dart';
+import 'package:cohortz/slices/permissions_feature/models/logical_group_model.dart';
+import 'package:cohortz/slices/permissions_feature/state/logical_group_providers.dart';
+import 'package:cohortz/slices/permissions_feature/ui/widgets/visibility_group_selector.dart';
 import 'poll_status_badge.dart';
 import 'poll_timer_badge.dart';
 import 'poll_progress_bar.dart';
@@ -57,6 +61,7 @@ class PollCard extends ConsumerWidget {
       },
       orElse: () => false,
     );
+    final logicalGroups = ref.watch(logicalGroupsProvider);
 
     final approvedPct = effectivePoll.requiredVotes > 0
         ? (effectivePoll.approvedCount / effectivePoll.requiredVotes).clamp(
@@ -97,13 +102,31 @@ class PollCard extends ConsumerWidget {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (isClosed)
-                      PollStatusBadge(isPassed: isPassed)
-                    else
-                      PollTimerBadge(
-                        isUrgent: effectivePoll.isUrgent,
-                        endTime: effectivePoll.endTime,
-                      ),
+                    Row(
+                      children: [
+                        if (isClosed)
+                          PollStatusBadge(isPassed: isPassed)
+                        else
+                          PollTimerBadge(
+                            isUrgent: effectivePoll.isUrgent,
+                            endTime: effectivePoll.endTime,
+                          ),
+                        if (canRemove) ...[
+                          const SizedBox(width: 8),
+                          IconButton(
+                            tooltip: 'Edit visibility',
+                            onPressed: () => _editVisibility(
+                              context: context,
+                              ref: ref,
+                              groups: logicalGroups,
+                              effectivePoll: effectivePoll,
+                            ),
+                            icon: const Icon(Icons.visibility_outlined),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ],
+                      ],
+                    ),
                     const SizedBox(height: 8),
                     Text(
                       effectivePoll.question,
@@ -140,6 +163,18 @@ class PollCard extends ConsumerWidget {
                       PollTimerBadge(
                         isUrgent: effectivePoll.isUrgent,
                         endTime: effectivePoll.endTime,
+                      ),
+                    if (canRemove)
+                      IconButton(
+                        tooltip: 'Edit visibility',
+                        onPressed: () => _editVisibility(
+                          context: context,
+                          ref: ref,
+                          groups: logicalGroups,
+                          effectivePoll: effectivePoll,
+                        ),
+                        icon: const Icon(Icons.visibility_outlined),
+                        visualDensity: VisualDensity.compact,
                       ),
                   ],
                 ),
@@ -449,6 +484,25 @@ class PollCard extends ConsumerWidget {
           ),
         );
       },
+    );
+  }
+
+  Future<void> _editVisibility({
+    required BuildContext context,
+    required WidgetRef ref,
+    required List<LogicalGroup> groups,
+    required PollItem effectivePoll,
+  }) async {
+    final selected = await showVisibilityGroupSelectorDialog(
+      context: context,
+      groups: groups,
+      initialSelection: effectivePoll.visibilityGroupIds,
+    );
+    if (selected == null) return;
+    await repo.savePoll(
+      effectivePoll.copyWith(
+        visibilityGroupIds: normalizeVisibilityGroupIds(selected),
+      ),
     );
   }
 }

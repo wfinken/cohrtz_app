@@ -1,4 +1,5 @@
 import 'package:dart_mappable/dart_mappable.dart';
+import 'package:cohortz/slices/permissions_core/acl_group_ids.dart';
 
 part 'note_model.mapper.dart';
 
@@ -10,6 +11,7 @@ class Note with NoteMappable {
   final String updatedBy;
   final DateTime updatedAt;
   final int logicalTime;
+  final List<String> visibilityGroupIds;
 
   Note({
     required this.id,
@@ -18,6 +20,7 @@ class Note with NoteMappable {
     required this.updatedBy,
     required this.updatedAt,
     this.logicalTime = 0,
+    this.visibilityGroupIds = const [AclGroupIds.everyone],
   });
 }
 
