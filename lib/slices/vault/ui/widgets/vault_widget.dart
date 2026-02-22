@@ -5,10 +5,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cohortz/slices/permissions_core/permission_flags.dart';
 import 'package:cohortz/slices/permissions_core/permission_providers.dart';
 import 'package:cohortz/slices/permissions_core/permission_utils.dart';
+import 'package:cohortz/slices/permissions_core/visibility_acl.dart';
 import 'package:cohortz/shared/theme/tokens/dialog_button_styles.dart';
 
 import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
 import 'package:cohortz/slices/dashboard_shell/models/dashboard_models.dart';
+import 'package:cohortz/slices/permissions_feature/models/logical_group_model.dart';
+import 'package:cohortz/slices/permissions_feature/state/logical_group_providers.dart';
+import 'package:cohortz/slices/permissions_feature/ui/widgets/visibility_group_selector.dart';
 import '../../../../app/di/app_providers.dart';
 import 'package:cohortz/slices/dashboard_shell/models/system_model.dart';
 import 'package:cohortz/slices/dashboard_shell/ui/widgets/skeleton_loader.dart';
@@ -30,6 +34,7 @@ class _VaultWidgetState extends ConsumerState<VaultWidget> {
     final vaultAsync = ref.watch(vaultStreamProvider);
     final settingsAsync = ref.watch(groupSettingsProvider);
     final groupType = settingsAsync.value?.groupType ?? GroupType.family;
+    final logicalGroups = ref.watch(logicalGroupsProvider);
     final permissionsAsync = ref.watch(currentUserPermissionsProvider);
     final canCreateVault = permissionsAsync.maybeWhen(
       data: (permissions) =>
@@ -147,10 +152,17 @@ class _VaultWidgetState extends ConsumerState<VaultWidget> {
                                                   item.creatorId.isEmpty)) ||
                                           (isCreator &&
                                               item.creatorId.isNotEmpty);
+                                      final canEditVisibility =
+                                          isAdmin ||
+                                          canManageVault ||
+                                          (isCreator &&
+                                              item.creatorId.isNotEmpty);
                                       return _VaultItemTile(
                                         item: item,
                                         canInteractVault: canInteractVault,
                                         canDeleteVault: canDelete,
+                                        canEditVisibility: canEditVisibility,
+                                        logicalGroups: logicalGroups,
                                       );
                                     }),
                                     if (canCreateVault ||
@@ -323,11 +335,15 @@ class _VaultItemTile extends ConsumerStatefulWidget {
   final VaultItem item;
   final bool canInteractVault;
   final bool canDeleteVault;
+  final bool canEditVisibility;
+  final List<LogicalGroup> logicalGroups;
 
   const _VaultItemTile({
     required this.item,
     required this.canInteractVault,
     required this.canDeleteVault,
+    required this.canEditVisibility,
+    required this.logicalGroups,
   });
 
   @override
@@ -391,27 +407,49 @@ class _VaultItemTileState extends ConsumerState<_VaultItemTile> {
               ),
             ),
             const SizedBox(width: 6),
-            if (widget.canDeleteVault)
-              IconButton(
-                tooltip: 'Delete Vault Item',
-                onPressed: _confirmDelete,
-                iconSize: 18,
-                splashRadius: 16,
-                visualDensity: VisualDensity.compact,
-                constraints: const BoxConstraints.tightFor(
-                  width: 28,
-                  height: 28,
-                ),
-                padding: EdgeInsets.zero,
-                icon: Icon(
-                  Icons.delete_outline,
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.error.withValues(alpha: _isHovering ? 1 : 0.75),
-                ),
-              )
-            else
-              const SizedBox(width: 28, height: 28),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (widget.canEditVisibility)
+                  IconButton(
+                    tooltip: 'Edit Visibility',
+                    onPressed: _editVisibility,
+                    iconSize: 18,
+                    splashRadius: 16,
+                    visualDensity: VisualDensity.compact,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 28,
+                      height: 28,
+                    ),
+                    padding: EdgeInsets.zero,
+                    icon: Icon(
+                      Icons.visibility_outlined,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                if (widget.canDeleteVault)
+                  IconButton(
+                    tooltip: 'Delete Vault Item',
+                    onPressed: _confirmDelete,
+                    iconSize: 18,
+                    splashRadius: 16,
+                    visualDensity: VisualDensity.compact,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 28,
+                      height: 28,
+                    ),
+                    padding: EdgeInsets.zero,
+                    icon: Icon(
+                      Icons.delete_outline,
+                      color: Theme.of(context).colorScheme.error.withValues(
+                        alpha: _isHovering ? 1 : 0.75,
+                      ),
+                    ),
+                  )
+                else
+                  const SizedBox(width: 28, height: 28),
+              ],
+            ),
           ],
         ),
       ),
@@ -516,9 +554,49 @@ class _VaultItemTileState extends ConsumerState<_VaultItemTile> {
       );
     }
   }
+
+  Future<void> _editVisibility() async {
+    final selected = await showVisibilityGroupSelectorDialog(
+      context: context,
+      groups: widget.logicalGroups,
+      initialSelection: widget.item.visibilityGroupIds,
+    );
+    if (selected == null) return;
+
+    await ref
+        .read(dashboardRepositoryProvider)
+        .saveVaultItem(
+          widget.item.copyWith(
+            visibilityGroupIds: normalizeVisibilityGroupIds(selected),
+          ),
+        );
+
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Updated vault visibility')));
+    }
+  }
 }
 
 final vaultStreamProvider = StreamProvider<List<VaultItem>>((ref) {
   final repo = ref.watch(dashboardRepositoryProvider);
-  return repo.watchVaultItems();
+  final myGroupIds = ref.watch(myLogicalGroupIdsProvider);
+  final isOwner = ref.watch(currentUserIsOwnerProvider);
+  final permissions = ref.watch(currentUserPermissionsProvider).value;
+  final bypass =
+      isOwner ||
+      (permissions != null &&
+          PermissionUtils.has(permissions, PermissionFlags.administrator));
+  return repo.watchVaultItems().map((items) {
+    return items
+        .where(
+          (item) => canViewByLogicalGroups(
+            itemGroupIds: item.visibilityGroupIds,
+            viewerGroupIds: myGroupIds,
+            bypass: bypass,
+          ),
+        )
+        .toList();
+  });
 });

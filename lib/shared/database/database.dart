@@ -125,6 +125,17 @@ class DashboardWidgets extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+@DataClassName('LogicalGroupEntity')
+class LogicalGroups extends Table {
+  TextColumn get id => text()();
+  TextColumn get value => text()();
+  IntColumn get isDeleted =>
+      integer().named('is_deleted').withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 @DataClassName('PollEntity')
 class Polls extends Table {
   TextColumn get id => text()();
@@ -149,6 +160,7 @@ class Polls extends Table {
     Roles,
     GroupSettingsTable,
     DashboardWidgets,
+    LogicalGroups,
     Polls,
   ],
 )

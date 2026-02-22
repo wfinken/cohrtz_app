@@ -2,10 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cohortz/slices/permissions_core/permission_flags.dart';
 import 'package:cohortz/slices/permissions_core/permission_gate.dart';
+import 'package:cohortz/slices/permissions_core/permission_providers.dart';
+import 'package:cohortz/slices/permissions_core/permission_utils.dart';
+import 'package:cohortz/slices/permissions_core/visibility_acl.dart';
 import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
 import 'package:cohortz/slices/dashboard_shell/models/dashboard_models.dart';
 import 'package:cohortz/slices/dashboard_shell/models/user_model.dart';
 import 'package:cohortz/slices/dashboard_shell/models/system_model.dart';
+import 'package:cohortz/slices/permissions_feature/state/logical_group_providers.dart';
 import '../dialogs/add_event_dialog.dart';
 import '../dialogs/event_details_dialog.dart';
 import 'package:cohortz/slices/dashboard_shell/ui/widgets/skeleton_loader.dart';
@@ -316,5 +320,23 @@ class CalendarWidget extends ConsumerWidget {
 
 final eventsStreamProvider = StreamProvider<List<CalendarEvent>>((ref) {
   final repo = ref.watch(dashboardRepositoryProvider);
-  return repo.watchEvents();
+  final myGroupIds = ref.watch(myLogicalGroupIdsProvider);
+  final isOwner = ref.watch(currentUserIsOwnerProvider);
+  final permissions = ref.watch(currentUserPermissionsProvider).value;
+  final bypass =
+      isOwner ||
+      (permissions != null &&
+          PermissionUtils.has(permissions, PermissionFlags.administrator));
+
+  return repo.watchEvents().map((events) {
+    return events
+        .where(
+          (event) => canViewByLogicalGroups(
+            itemGroupIds: event.visibilityGroupIds,
+            viewerGroupIds: myGroupIds,
+            bypass: bypass,
+          ),
+        )
+        .toList();
+  });
 });

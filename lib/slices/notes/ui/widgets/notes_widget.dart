@@ -6,11 +6,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../slices/permissions_core/permission_flags.dart';
+import '../../../../slices/permissions_core/acl_group_ids.dart';
 import '../../../../slices/permissions_core/permission_providers.dart';
 import '../../../../slices/permissions_core/permission_utils.dart';
+import '../../../../slices/permissions_core/visibility_acl.dart';
 import '../../../../app/di/app_providers.dart';
 import '../../../../shared/theme/tokens/dialog_button_styles.dart';
 import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
+import 'package:cohortz/slices/permissions_feature/state/logical_group_providers.dart';
+import 'package:cohortz/slices/permissions_feature/ui/widgets/visibility_group_selector.dart';
 import '../../models/note_model.dart';
 import 'package:cohortz/slices/dashboard_shell/ui/widgets/ghost_add_button.dart';
 
@@ -50,6 +54,7 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
   bool _isDirty = false;
   bool _isEditingTitle = false;
   bool _isCreatingDefault = false;
+  List<String> _activeVisibilityGroupIds = const [AclGroupIds.everyone];
 
   final _titleFocusNode = FocusNode();
 
@@ -393,6 +398,7 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
     bool canManageNotes,
     bool canCreateNotes,
   ) {
+    final logicalGroups = ref.watch(logicalGroupsProvider);
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
       decoration: BoxDecoration(
@@ -509,6 +515,32 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
               return _buildPresenceRow(context, editors);
             },
           ),
+          if (canEditNotes) ...[
+            const SizedBox(width: 8),
+            IconButton(
+              tooltip:
+                  'Visibility: ${visibilitySelectionSummary(selectedGroupIds: _activeVisibilityGroupIds, allGroups: logicalGroups)}',
+              onPressed: () async {
+                final selected = await showVisibilityGroupSelectorDialog(
+                  context: context,
+                  groups: logicalGroups,
+                  initialSelection: _activeVisibilityGroupIds,
+                );
+                if (selected == null || !mounted) return;
+                setState(() {
+                  _activeVisibilityGroupIds = normalizeVisibilityGroupIds(
+                    selected,
+                  );
+                });
+                await _persistNote();
+              },
+              icon: const Icon(Icons.visibility_outlined, size: 18),
+              style: IconButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.primary,
+                backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
+              ),
+            ),
+          ],
           if (canManageNotes) ...[
             const SizedBox(width: 8),
             IconButton(
@@ -900,6 +932,9 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
   }
 
   void _syncDocumentState(Note activeDocument, {bool force = false}) {
+    _activeVisibilityGroupIds = normalizeVisibilityGroupIds(
+      activeDocument.visibilityGroupIds,
+    );
     if (_titleController.text == activeDocument.title &&
         _editorController.text == activeDocument.content) {
       _isDirty = false;
@@ -992,6 +1027,7 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
     final userId =
         ref.read(syncServiceProvider.select((service) => service.identity)) ??
         'anonymous';
+    _activeVisibilityGroupIds = const [AclGroupIds.everyone];
     final time = ref.read(hybridTimeServiceProvider);
     final note = Note(
       id: 'note:${_uuid.v4()}',
@@ -1000,6 +1036,9 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
       updatedBy: userId,
       updatedAt: time.getAdjustedTimeLocal(),
       logicalTime: time.nextLogicalTime(),
+      visibilityGroupIds: normalizeVisibilityGroupIds(
+        _activeVisibilityGroupIds,
+      ),
     );
     await ref.read(noteRepositoryProvider).saveNote(note);
     if (!mounted) return;
@@ -1020,6 +1059,7 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
       updatedBy: userId,
       updatedAt: time.getAdjustedTimeLocal(),
       logicalTime: time.nextLogicalTime(),
+      visibilityGroupIds: const [AclGroupIds.everyone],
     );
     await ref.read(noteRepositoryProvider).saveNote(defaultNote);
     _isCreatingDefault = false;
@@ -1058,6 +1098,9 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
       updatedBy: userId,
       updatedAt: time.getAdjustedTimeLocal(),
       logicalTime: time.nextLogicalTime(),
+      visibilityGroupIds: normalizeVisibilityGroupIds(
+        _activeVisibilityGroupIds,
+      ),
     );
 
     await ref.read(noteRepositoryProvider).saveNote(note);

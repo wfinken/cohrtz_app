@@ -1,4 +1,5 @@
 import 'package:dart_mappable/dart_mappable.dart';
+import 'package:cohortz/slices/permissions_core/acl_group_ids.dart';
 
 part 'chat_message.mapper.dart';
 
@@ -39,6 +40,7 @@ class ChatThread with ChatThreadMappable {
   final DateTime createdAt;
   final int logicalTime;
   final DateTime? expiresAt;
+  final List<String> visibilityGroupIds;
 
   const ChatThread({
     required this.id,
@@ -49,6 +51,7 @@ class ChatThread with ChatThreadMappable {
     required this.createdAt,
     this.logicalTime = 0,
     this.expiresAt,
+    this.visibilityGroupIds = const [AclGroupIds.everyone],
   });
 
   bool get isDm => kind == dmKind;

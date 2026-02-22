@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cohortz/slices/permissions_core/permission_flags.dart';
 import 'package:cohortz/slices/permissions_core/permission_providers.dart';
 import 'package:cohortz/slices/permissions_core/permission_utils.dart';
+import 'package:cohortz/slices/permissions_core/visibility_acl.dart';
 import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
+import 'package:cohortz/slices/dashboard_shell/models/dashboard_models.dart';
+import 'package:cohortz/slices/permissions_feature/state/logical_group_providers.dart';
 import '../dialogs/create_poll_dialog.dart';
 import 'package:cohortz/slices/dashboard_shell/ui/dashboard_edit_notifier.dart';
 import 'poll_card.dart';
@@ -14,7 +17,7 @@ class PollsWidget extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final pollsAsync = ref.watch(pollsStreamProvider);
+    final pollsAsync = ref.watch(visiblePollsStreamProvider);
     final repo = ref.watch(dashboardRepositoryProvider);
     final isEditMode = ref.watch(dashboardEditProvider).isEditing;
 
@@ -111,3 +114,25 @@ class PollsWidget extends ConsumerWidget {
     );
   }
 }
+
+final visiblePollsStreamProvider = StreamProvider<List<PollItem>>((ref) {
+  final repo = ref.watch(dashboardRepositoryProvider);
+  final myGroupIds = ref.watch(myLogicalGroupIdsProvider);
+  final isOwner = ref.watch(currentUserIsOwnerProvider);
+  final permissions = ref.watch(currentUserPermissionsProvider).value;
+  final bypass =
+      isOwner ||
+      (permissions != null &&
+          PermissionUtils.has(permissions, PermissionFlags.administrator));
+  return repo.watchPolls().map((polls) {
+    return polls
+        .where(
+          (poll) => canViewByLogicalGroups(
+            itemGroupIds: poll.visibilityGroupIds,
+            viewerGroupIds: myGroupIds,
+            bypass: bypass,
+          ),
+        )
+        .toList();
+  });
+});

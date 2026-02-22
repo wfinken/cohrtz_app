@@ -1,4 +1,5 @@
 import 'package:dart_mappable/dart_mappable.dart';
+import 'package:cohortz/slices/permissions_core/acl_group_ids.dart';
 
 part 'task_item.mapper.dart';
 
@@ -35,6 +36,7 @@ class TaskItem with TaskItemMappable {
   final List<TaskSubtask> subtasks;
   final String? notes;
   final String completedBy;
+  final List<String> visibilityGroupIds;
 
   TaskItem({
     required this.id,
@@ -51,5 +53,6 @@ class TaskItem with TaskItemMappable {
     this.subtasks = const [],
     this.notes,
     this.completedBy = '',
+    this.visibilityGroupIds = const [AclGroupIds.everyone],
   });
 }

@@ -4,6 +4,7 @@ import 'package:cohortz/slices/dashboard_shell/models/user_model.dart';
 import 'package:cohortz/slices/dashboard_shell/models/system_model.dart';
 import 'package:cohortz/slices/notes/models/note_model.dart';
 import 'package:cohortz/slices/permissions_feature/models/member_model.dart';
+import 'package:cohortz/slices/permissions_feature/models/logical_group_model.dart';
 import 'package:cohortz/slices/permissions_feature/models/role_model.dart';
 
 void main() {
@@ -15,6 +16,7 @@ void main() {
         assignedTo: 'Alice',
         assigneeId: 'u1',
         isCompleted: false,
+        visibilityGroupIds: const ['everyone'],
       );
       final json = task.toJson();
       final decoded = TaskItemMapper.fromJson(json);
@@ -22,6 +24,7 @@ void main() {
       expect(decoded.title, task.title);
       expect(decoded.assigneeId, task.assigneeId);
       expect(decoded.assignedTo, task.assignedTo);
+      expect(decoded.visibilityGroupIds, const ['everyone']);
     });
 
     test('CalendarEvent serialization', () {
@@ -171,6 +174,26 @@ void main() {
       expect(decoded.id, role.id);
       expect(decoded.permissions, 123);
       expect(decoded.groupId, 'g1');
+    });
+
+    test('LogicalGroup serialization', () {
+      final group = LogicalGroup(
+        id: 'logical_group:1',
+        name: 'Ops',
+        memberIds: const ['u1', 'u2'],
+      );
+      final json = group.toJson();
+      final decoded = LogicalGroupMapper.fromJson(json);
+      expect(decoded.id, group.id);
+      expect(decoded.memberIds, contains('u1'));
+      expect(decoded.name, 'Ops');
+    });
+
+    test('Legacy visibility defaults to everyone', () {
+      final legacyTask = TaskItemMapper.fromJson(
+        '{"id":"t1","title":"Legacy","assignedTo":"Alice","assigneeId":"u1","isCompleted":false}',
+      );
+      expect(legacyTask.visibilityGroupIds, const ['everyone']);
     });
 
     test('Note serialization', () {

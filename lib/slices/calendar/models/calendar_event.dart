@@ -1,4 +1,5 @@
 import 'package:dart_mappable/dart_mappable.dart';
+import 'package:cohortz/slices/permissions_core/acl_group_ids.dart';
 
 part 'calendar_event.mapper.dart';
 
@@ -16,6 +17,7 @@ class CalendarEvent with CalendarEventMappable {
   final String creatorId;
   final Map<String, String>
   attendees; // UserId -> Status (going, maybe, not_going)
+  final List<String> visibilityGroupIds;
 
   CalendarEvent({
     required this.id,
@@ -29,5 +31,6 @@ class CalendarEvent with CalendarEventMappable {
     this.description = '',
     this.creatorId = '',
     this.attendees = const {},
+    this.visibilityGroupIds = const [AclGroupIds.everyone],
   });
 }

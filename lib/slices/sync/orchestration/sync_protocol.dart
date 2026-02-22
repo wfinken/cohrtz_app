@@ -214,23 +214,47 @@ class SyncProtocol {
         Log.d('PacketHandler', 'user_profiles count: ${profiles.length}');
       }
 
-      final restrictedTables = {'roles', 'members'};
-      final touchesRestricted = decoded.keys.any(restrictedTables.contains);
-      if (touchesRestricted) {
+      final touchesRoleOrMembers = decoded.keys.any(
+        (key) => key == 'roles' || key == 'members',
+      );
+      final touchesLogicalGroups = decoded.keys.contains('logical_groups');
+      if (touchesRoleOrMembers || touchesLogicalGroups) {
         final isBootstrap = await _permissionService.isBootstrapState(roomName);
         if (!isBootstrap) {
           final senderId = packet.senderId;
-          final allowed = await _permissionService.hasPermission(
-            roomName,
-            senderId,
-            PermissionFlags.manageRoles,
-          );
-          if (!allowed) {
-            Log.w(
-              'SyncProtocol',
-              'RBAC violation: $senderId attempted role/member changes without manageRoles.',
+          if (touchesRoleOrMembers) {
+            final canManageRoles = await _permissionService.hasPermission(
+              roomName,
+              senderId,
+              PermissionFlags.manageRoles,
             );
-            return;
+            if (!canManageRoles) {
+              Log.w(
+                'SyncProtocol',
+                'RBAC violation: $senderId attempted role/member changes without manageRoles.',
+              );
+              return;
+            }
+          }
+
+          if (touchesLogicalGroups) {
+            final canManageRoles = await _permissionService.hasPermission(
+              roomName,
+              senderId,
+              PermissionFlags.manageRoles,
+            );
+            final canManageMembers = await _permissionService.hasPermission(
+              roomName,
+              senderId,
+              PermissionFlags.manageMembers,
+            );
+            if (!(canManageRoles && canManageMembers)) {
+              Log.w(
+                'SyncProtocol',
+                'RBAC violation: $senderId attempted logical_groups changes without manageRoles+manageMembers.',
+              );
+              return;
+            }
           }
         }
       }

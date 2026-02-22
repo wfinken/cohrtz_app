@@ -6,13 +6,18 @@ import 'package:uuid/uuid.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../slices/permissions_core/permission_flags.dart';
+import '../../../../slices/permissions_core/acl_group_ids.dart';
 import '../../../../slices/permissions_core/permission_providers.dart';
 import '../../../../slices/permissions_core/permission_utils.dart';
+import '../../../../slices/permissions_core/visibility_acl.dart';
 import '../../../../app/di/app_providers.dart';
 import '../../../../shared/theme/tokens/app_theme.dart';
 import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
 import 'package:cohortz/slices/dashboard_shell/models/dashboard_models.dart';
 import 'package:cohortz/slices/dashboard_shell/models/user_model.dart';
+import 'package:cohortz/slices/permissions_feature/models/logical_group_model.dart';
+import 'package:cohortz/slices/permissions_feature/state/logical_group_providers.dart';
+import 'package:cohortz/slices/permissions_feature/ui/widgets/visibility_group_selector.dart';
 
 class AddTaskDialog extends ConsumerStatefulWidget {
   const AddTaskDialog({super.key});
@@ -35,6 +40,7 @@ class _AddTaskDialogState extends ConsumerState<AddTaskDialog> {
   TimeOfDay? _dueTime;
   String _repeat = 'Does not repeat';
   final String _reminder = 'No reminder';
+  List<String> _visibilityGroupIds = const [AclGroupIds.everyone];
 
   @override
   void dispose() {
@@ -50,6 +56,7 @@ class _AddTaskDialogState extends ConsumerState<AddTaskDialog> {
   Widget build(BuildContext context) {
     final profilesAsync = ref.watch(userProfilesProvider);
     final permissionsAsync = ref.watch(currentUserPermissionsProvider);
+    final logicalGroups = ref.watch(logicalGroupsProvider);
     final permissions = permissionsAsync.value ?? PermissionFlags.none;
 
     final canCreateTasks = PermissionUtils.has(
@@ -117,6 +124,11 @@ class _AddTaskDialogState extends ConsumerState<AddTaskDialog> {
                               _buildSubtasksSection(hasPermission),
                               const SizedBox(height: 24),
                               _buildNotesSection(hasPermission),
+                              const SizedBox(height: 24),
+                              _buildVisibilitySection(
+                                hasPermission: hasPermission,
+                                groups: logicalGroups,
+                              ),
                             ],
                           ),
                         ),
@@ -829,6 +841,57 @@ class _AddTaskDialogState extends ConsumerState<AddTaskDialog> {
     );
   }
 
+  Widget _buildVisibilitySection({
+    required bool hasPermission,
+    required List<LogicalGroup> groups,
+  }) {
+    final theme = Theme.of(context);
+    final summary = visibilitySelectionSummary(
+      selectedGroupIds: _visibilityGroupIds,
+      allGroups: groups,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'VISIBILITY',
+          style: TextStyle(
+            color: theme.colorScheme.onSurfaceVariant,
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.0,
+          ),
+        ),
+        const SizedBox(height: 8),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          enabled: hasPermission,
+          title: Text(
+            summary,
+            style: TextStyle(color: theme.colorScheme.onSurface),
+          ),
+          subtitle: const Text('Who can see this task'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: !hasPermission
+              ? null
+              : () async {
+                  final selected = await showVisibilityGroupSelectorDialog(
+                    context: context,
+                    groups: groups,
+                    initialSelection: _visibilityGroupIds,
+                  );
+                  if (selected == null || !mounted) return;
+                  setState(
+                    () => _visibilityGroupIds = normalizeVisibilityGroupIds(
+                      selected,
+                    ),
+                  );
+                },
+        ),
+      ],
+    );
+  }
+
   void _save(bool hasPermission) {
     if (!hasPermission || _titleController.text.isEmpty) return;
 
@@ -868,6 +931,7 @@ class _AddTaskDialogState extends ConsumerState<AddTaskDialog> {
           )
           .toList(),
       notes: _notesController.text.isEmpty ? null : _notesController.text,
+      visibilityGroupIds: normalizeVisibilityGroupIds(_visibilityGroupIds),
     );
 
     ref.read(dashboardRepositoryProvider).saveTask(task);

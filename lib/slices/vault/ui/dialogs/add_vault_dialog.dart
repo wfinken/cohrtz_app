@@ -6,12 +6,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../slices/permissions_core/permission_flags.dart';
+import '../../../../slices/permissions_core/acl_group_ids.dart';
 import '../../../../slices/permissions_core/permission_providers.dart';
 import '../../../../slices/permissions_core/permission_utils.dart';
+import '../../../../slices/permissions_core/visibility_acl.dart';
 import '../../../../app/di/app_providers.dart';
 import '../../../../shared/theme/tokens/app_theme.dart';
 import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
 import 'package:cohortz/slices/dashboard_shell/models/dashboard_models.dart';
+import 'package:cohortz/slices/permissions_feature/models/logical_group_model.dart';
+import 'package:cohortz/slices/permissions_feature/state/logical_group_providers.dart';
+import 'package:cohortz/slices/permissions_feature/ui/widgets/visibility_group_selector.dart';
 
 class AddVaultDialog extends ConsumerStatefulWidget {
   const AddVaultDialog({super.key});
@@ -26,12 +31,14 @@ class _AddVaultDialogState extends ConsumerState<AddVaultDialog> {
   String _selectedType = 'password';
   bool _obscureText = true;
   bool _isSaving = false;
+  List<String> _visibilityGroupIds = const [AclGroupIds.everyone];
 
   final List<String> _types = ['password', 'wifi', 'card', 'code', 'note'];
 
   @override
   Widget build(BuildContext context) {
     final permissionsAsync = ref.watch(currentUserPermissionsProvider);
+    final logicalGroups = ref.watch(logicalGroupsProvider);
     final permissions = permissionsAsync.value ?? PermissionFlags.none;
 
     final canCreateVault = PermissionUtils.has(
@@ -85,6 +92,12 @@ class _AddVaultDialogState extends ConsumerState<AddVaultDialog> {
                               _buildCategorySelector(hasPermission, theme),
                               const SizedBox(height: 24),
                               _buildInputs(context, hasPermission, theme),
+                              const SizedBox(height: 16),
+                              _buildVisibilitySection(
+                                hasPermission: hasPermission,
+                                groups: logicalGroups,
+                                theme: theme,
+                              ),
                               const SizedBox(height: 24),
                             ],
                           ),
@@ -421,6 +434,53 @@ class _AddVaultDialogState extends ConsumerState<AddVaultDialog> {
     );
   }
 
+  Widget _buildVisibilitySection({
+    required bool hasPermission,
+    required List<LogicalGroup> groups,
+    required ThemeData theme,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'VISIBILITY',
+          style: TextStyle(
+            color: theme.hintColor,
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.0,
+          ),
+        ),
+        const SizedBox(height: 8),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          enabled: hasPermission,
+          title: Text(
+            visibilitySelectionSummary(
+              selectedGroupIds: _visibilityGroupIds,
+              allGroups: groups,
+            ),
+          ),
+          subtitle: const Text('Who can view this vault item'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: !hasPermission
+              ? null
+              : () async {
+                  final selected = await showVisibilityGroupSelectorDialog(
+                    context: context,
+                    groups: groups,
+                    initialSelection: _visibilityGroupIds,
+                  );
+                  if (selected == null || !mounted) return;
+                  setState(() {
+                    _visibilityGroupIds = normalizeVisibilityGroupIds(selected);
+                  });
+                },
+        ),
+      ],
+    );
+  }
+
   void _generateStrongPassword() {
     // Simple random password generator
     const length = 16;
@@ -503,6 +563,7 @@ class _AddVaultDialogState extends ConsumerState<AddVaultDialog> {
         type: _selectedType,
         encryptedValue: encrypted,
         creatorId: syncService.identity ?? '',
+        visibilityGroupIds: normalizeVisibilityGroupIds(_visibilityGroupIds),
       );
 
       if (!mounted) return;

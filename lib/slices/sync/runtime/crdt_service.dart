@@ -251,6 +251,7 @@ class CrdtService extends ChangeNotifier {
       'roles',
       'group_settings',
       'dashboard_widgets',
+      'logical_groups',
       'notes',
       'polls',
     ];
@@ -307,6 +308,8 @@ class CrdtService extends ChangeNotifier {
           targetTable = 'group_settings';
         } else if (id.startsWith('widget:')) {
           targetTable = 'dashboard_widgets';
+        } else if (id.startsWith('logical_group:')) {
+          targetTable = 'logical_groups';
         } else if (id.startsWith('note:')) {
           targetTable = 'notes';
         } else if (id.startsWith('poll:')) {

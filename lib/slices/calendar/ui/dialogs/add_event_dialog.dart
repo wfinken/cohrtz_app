@@ -5,11 +5,16 @@ import 'package:uuid/uuid.dart';
 import 'package:intl/intl.dart';
 
 import 'package:cohortz/slices/permissions_core/permission_flags.dart';
+import 'package:cohortz/slices/permissions_core/acl_group_ids.dart';
 import 'package:cohortz/slices/permissions_core/permission_providers.dart';
 import 'package:cohortz/slices/permissions_core/permission_utils.dart';
+import 'package:cohortz/slices/permissions_core/visibility_acl.dart';
 import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
 import 'package:cohortz/slices/dashboard_shell/models/dashboard_models.dart';
 import 'package:cohortz/slices/dashboard_shell/models/user_model.dart';
+import 'package:cohortz/slices/permissions_feature/models/logical_group_model.dart';
+import 'package:cohortz/slices/permissions_feature/state/logical_group_providers.dart';
+import 'package:cohortz/slices/permissions_feature/ui/widgets/visibility_group_selector.dart';
 import '../../../../app/di/app_providers.dart';
 import '../../../../shared/theme/tokens/app_theme.dart';
 
@@ -51,6 +56,7 @@ class _AddEventDialogContentState
 
   bool _isAllInvited = true;
   Set<String> _selectedMemberIds = {};
+  List<String> _visibilityGroupIds = const [AclGroupIds.everyone];
 
   @override
   void initState() {
@@ -75,7 +81,10 @@ class _AddEventDialogContentState
     if (widget.event != null) {
       _isAllInvited = widget.event!.isAllInvited;
       _selectedMemberIds = widget.event!.attendees.keys.toSet();
-    } else {}
+      _visibilityGroupIds = normalizeVisibilityGroupIds(
+        widget.event!.visibilityGroupIds,
+      );
+    }
   }
 
   @override
@@ -102,6 +111,7 @@ class _AddEventDialogContentState
     // Watch profiles for invite selection
     final profilesAsync = ref.watch(userProfilesProvider);
     final allProfiles = profilesAsync.value ?? [];
+    final logicalGroups = ref.watch(logicalGroupsProvider);
 
     final isAdmin = PermissionUtils.has(
       permissions,
@@ -426,6 +436,11 @@ class _AddEventDialogContentState
                         ),
                       ),
                     ),
+                    const SizedBox(height: 16),
+                    _buildVisibilityTile(
+                      hasPermission: hasPermission,
+                      groups: logicalGroups,
+                    ),
                     const SizedBox(height: 24),
                   ],
                 ),
@@ -627,6 +642,51 @@ class _AddEventDialogContentState
     );
   }
 
+  Widget _buildVisibilityTile({
+    required bool hasPermission,
+    required List<LogicalGroup> groups,
+  }) {
+    final theme = Theme.of(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.dividerColor),
+      ),
+      child: ListTile(
+        enabled: hasPermission,
+        leading: Icon(
+          Icons.visibility_outlined,
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+        title: const Text('Visibility'),
+        subtitle: Text(
+          visibilitySelectionSummary(
+            selectedGroupIds: _visibilityGroupIds,
+            allGroups: groups,
+          ),
+        ),
+        trailing: Icon(
+          Icons.chevron_right,
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+        onTap: !hasPermission
+            ? null
+            : () async {
+                final selected = await showVisibilityGroupSelectorDialog(
+                  context: context,
+                  groups: groups,
+                  initialSelection: _visibilityGroupIds,
+                );
+                if (selected == null || !mounted) return;
+                setState(() {
+                  _visibilityGroupIds = normalizeVisibilityGroupIds(selected);
+                });
+              },
+      ),
+    );
+  }
+
   Future<void> _save() async {
     final title = _titleController.text.trim();
     if (title.isEmpty) {
@@ -691,6 +751,7 @@ class _AddEventDialogContentState
           isRepeating: _isRepeating,
           isAllInvited: _isAllInvited,
           attendees: attendees,
+          visibilityGroupIds: normalizeVisibilityGroupIds(_visibilityGroupIds),
         ) ??
         CalendarEvent(
           id: 'event:${const Uuid().v4()}',
@@ -704,6 +765,7 @@ class _AddEventDialogContentState
           isAllInvited: _isAllInvited,
           creatorId: ref.read(syncServiceProvider).identity ?? '',
           attendees: attendees,
+          visibilityGroupIds: normalizeVisibilityGroupIds(_visibilityGroupIds),
         );
 
     await ref.read(dashboardRepositoryProvider).saveEvent(event);

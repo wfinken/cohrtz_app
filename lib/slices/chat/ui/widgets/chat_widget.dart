@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
+import 'package:cohortz/slices/permissions_core/acl_group_ids.dart';
 import 'package:cohortz/slices/permissions_core/permission_flags.dart';
 import 'package:cohortz/slices/permissions_core/permission_providers.dart';
 import 'package:cohortz/slices/permissions_core/permission_utils.dart';
+import 'package:cohortz/slices/permissions_core/visibility_acl.dart';
 import 'package:cohortz/shared/theme/tokens/dialog_button_styles.dart';
 import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
 import 'package:cohortz/slices/dashboard_shell/models/dashboard_models.dart';
@@ -12,6 +14,8 @@ import '../controllers/chat_read_receipt_controller.dart';
 
 import '../../../../app/di/app_providers.dart';
 import 'package:cohortz/slices/dashboard_shell/ui/widgets/skeleton_loader.dart';
+import 'package:cohortz/slices/permissions_feature/state/logical_group_providers.dart';
+import 'package:cohortz/slices/permissions_feature/ui/widgets/visibility_group_selector.dart';
 
 enum _ThreadAction { createChannel, startDm }
 
@@ -993,6 +997,10 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
       builder: (_) => const _CreateChannelDialog(),
     );
     if (draft == null) return;
+    final visibilityGroupIds = await _pickVisibilityGroups(
+      initialSelection: const [AclGroupIds.everyone],
+    );
+    if (visibilityGroupIds == null) return;
 
     final now = DateTime.now();
     final thread = ChatThread(
@@ -1002,6 +1010,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
       createdBy: myId,
       createdAt: now,
       expiresAt: draft.ttl != null ? now.add(draft.ttl!) : null,
+      visibilityGroupIds: visibilityGroupIds,
     );
     await ref.read(dashboardRepositoryProvider).saveChatThread(thread);
     if (!mounted) return;
@@ -1040,12 +1049,30 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
     );
     controller.dispose();
     if (updatedName == null || updatedName.trim().isEmpty) return;
+    final visibilityGroupIds = await _pickVisibilityGroups(
+      initialSelection: thread.visibilityGroupIds,
+    );
+    if (visibilityGroupIds == null) return;
 
     await ref
         .read(dashboardRepositoryProvider)
         .saveChatThread(
-          thread.copyWith(name: _normalizeChannelName(updatedName)),
+          thread.copyWith(
+            name: _normalizeChannelName(updatedName),
+            visibilityGroupIds: visibilityGroupIds,
+          ),
         );
+  }
+
+  Future<List<String>?> _pickVisibilityGroups({
+    required List<String> initialSelection,
+  }) async {
+    final groups = ref.read(logicalGroupsProvider);
+    return showVisibilityGroupSelectorDialog(
+      context: context,
+      groups: groups,
+      initialSelection: normalizeVisibilityGroupIds(initialSelection),
+    );
   }
 
   Future<void> _deleteChannel(ChatThread thread) async {
@@ -1299,7 +1326,24 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
 
 final chatThreadsStreamProvider = StreamProvider<List<ChatThread>>((ref) {
   final repo = ref.watch(dashboardRepositoryProvider);
-  return repo.watchChatThreads();
+  final myGroupIds = ref.watch(myLogicalGroupIdsProvider);
+  final isOwner = ref.watch(currentUserIsOwnerProvider);
+  final permissions = ref.watch(currentUserPermissionsProvider).value;
+  final bypass =
+      isOwner ||
+      (permissions != null &&
+          PermissionUtils.has(permissions, PermissionFlags.administrator));
+
+  return repo.watchChatThreads().map((threads) {
+    return threads.where((thread) {
+      if (thread.isDm) return true;
+      return canViewByLogicalGroups(
+        itemGroupIds: thread.visibilityGroupIds,
+        viewerGroupIds: myGroupIds,
+        bypass: bypass,
+      );
+    }).toList();
+  });
 });
 
 final threadMessagesStreamProvider =
