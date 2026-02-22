@@ -8,6 +8,8 @@ void main() {
         id: '12345',
         displayName: 'Test User',
         publicKey: 'pubkey123',
+        avatarBase64: 'img-data',
+        bio: 'bio text',
       );
 
       final json = user.toMap();
@@ -16,6 +18,8 @@ void main() {
         'id': '12345',
         'displayName': 'Test User',
         'publicKey': 'pubkey123',
+        'avatarBase64': 'img-data',
+        'bio': 'bio text',
       });
     });
 
@@ -31,6 +35,8 @@ void main() {
       expect(user.id, '67890');
       expect(user.displayName, 'Another User');
       expect(user.publicKey, 'key456');
+      expect(user.avatarBase64, isEmpty);
+      expect(user.bio, isEmpty);
     });
 
     test('round trip serialization works', () {
@@ -46,6 +52,8 @@ void main() {
       expect(copy.id, original.id);
       expect(copy.displayName, original.displayName);
       expect(copy.publicKey, original.publicKey);
+      expect(copy.avatarBase64, original.avatarBase64);
+      expect(copy.bio, original.bio);
     });
   });
 }

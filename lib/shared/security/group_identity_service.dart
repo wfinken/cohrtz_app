@@ -58,6 +58,8 @@ class GroupIdentityService {
   Future<UserProfile> ensureForGroup({
     required String groupId,
     String? displayName,
+    String? avatarBase64,
+    String? bio,
     String? fallbackIdentity,
   }) async {
     if (groupId.isEmpty) {
@@ -86,11 +88,15 @@ class GroupIdentityService {
         : (!_isPlaceholderName(existingName)
               ? existingName
               : (legacyName.isNotEmpty ? legacyName : 'User'));
+    final resolvedAvatar = avatarBase64?.trim() ?? existing?.avatarBase64 ?? '';
+    final resolvedBio = bio?.trim() ?? existing?.bio ?? '';
 
     final profile = UserProfile(
       id: resolvedId,
       displayName: resolvedName,
       publicKey: publicKey,
+      avatarBase64: resolvedAvatar,
+      bio: resolvedBio,
     );
     await saveForGroup(groupId, profile);
     return profile;
@@ -99,6 +105,8 @@ class GroupIdentityService {
   Future<UserProfile> regenerateKeysForGroup({
     required String groupId,
     required String displayName,
+    String? avatarBase64,
+    String? bio,
     required String fallbackIdentity,
   }) async {
     if (groupId.isEmpty) {
@@ -108,6 +116,8 @@ class GroupIdentityService {
     return ensureForGroup(
       groupId: groupId,
       displayName: displayName,
+      avatarBase64: avatarBase64,
+      bio: bio,
       fallbackIdentity: fallbackIdentity,
     );
   }

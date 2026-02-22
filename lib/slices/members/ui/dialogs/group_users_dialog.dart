@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cohortz/shared/widgets/profile_avatar.dart';
 
 import '../../../../shared/theme/tokens/dialog_button_styles.dart';
 import '../../../../app/di/app_providers.dart';
 import 'package:cohortz/slices/dashboard_shell/models/user_model.dart';
 import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
 import 'group_user_editor_dialog.dart';
+import 'user_profile_view_dialog.dart';
 
 class GroupUsersDialog extends ConsumerWidget {
   const GroupUsersDialog({super.key});
@@ -144,14 +146,6 @@ class GroupUsersDialog extends ConsumerWidget {
                     final isOnline = onlineIds.contains(profile.id);
                     final isMe = profile.id == myId;
 
-                    final initials = profile.displayName.isNotEmpty
-                        ? (profile.displayName.length >= 2
-                              ? profile.displayName
-                                    .substring(0, 2)
-                                    .toUpperCase()
-                              : profile.displayName.toUpperCase())
-                        : '??';
-
                     return ListTile(
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 8,
@@ -159,25 +153,10 @@ class GroupUsersDialog extends ConsumerWidget {
                       ),
                       leading: Stack(
                         children: [
-                          Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: isMe
-                                  ? const Color(0xFF3B82F6)
-                                  : const Color(0xFF374151),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Center(
-                              child: Text(
-                                initials,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ),
+                          ProfileAvatar(
+                            displayName: profile.displayName,
+                            avatarBase64: profile.avatarBase64,
+                            size: 40,
                           ),
                           if (isOnline)
                             Positioned(
@@ -221,7 +200,7 @@ class GroupUsersDialog extends ConsumerWidget {
                         style: TextStyle(
                           fontSize: 12,
                           color: isOnline
-                              ? const Color(0xFF10B981)
+                              ? Theme.of(context).colorScheme.tertiary
                               : Theme.of(context).hintColor,
                         ),
                       ),
@@ -267,6 +246,16 @@ class GroupUsersDialog extends ConsumerWidget {
                               tooltip: 'Remove User',
                             )
                           : null,
+                      onTap: () {
+                        showDialog(
+                          context: context,
+                          builder: (_) => UserProfileViewDialog(
+                            profile: profile,
+                            isOnline: isOnline,
+                            isMe: isMe,
+                          ),
+                        );
+                      },
                     );
                   },
                 ),

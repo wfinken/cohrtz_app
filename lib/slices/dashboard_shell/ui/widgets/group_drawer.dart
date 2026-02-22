@@ -15,11 +15,13 @@ import '../dashboard_edit_notifier.dart';
 import '../dialogs/group_settings_dialog.dart';
 import 'package:cohortz/slices/members/ui/dialogs/invite_dialog.dart';
 import 'package:cohortz/slices/members/ui/dialogs/role_management_dialog.dart';
+import 'package:cohortz/slices/members/ui/dialogs/group_user_editor_dialog.dart';
 import '../dialogs/app_user_settings_dialog.dart';
 import '../dialogs/group_connection_status_dialog.dart';
 import 'group_drawer_header.dart';
 import 'group_drawer_item.dart';
 import 'package:cohortz/slices/chat/ui/providers/unread_message_provider.dart';
+import 'package:cohortz/shared/widgets/profile_avatar.dart';
 
 class GroupDrawer extends ConsumerWidget {
   final String groupName;
@@ -80,7 +82,8 @@ class GroupDrawer extends ConsumerWidget {
       orElse: () => false,
     );
 
-    String myDisplayName = 'Admin'; // Default fallback
+    var myDisplayName = 'Admin'; // Default fallback
+    var myAvatarBase64 = '';
     if (myId != null && profiles.isNotEmpty) {
       final myProfile = profiles.firstWhere(
         (u) => u.id == myId,
@@ -89,11 +92,8 @@ class GroupDrawer extends ConsumerWidget {
       if (myProfile.displayName.isNotEmpty) {
         myDisplayName = myProfile.displayName;
       }
+      myAvatarBase64 = myProfile.avatarBase64;
     }
-
-    final initials = myDisplayName.length >= 2
-        ? myDisplayName.substring(0, 2).toUpperCase()
-        : myDisplayName.substring(0, 1).toUpperCase();
 
     final isEditing = ref.watch(dashboardEditProvider).isEditing;
     final groupId = ref.read(dashboardRepositoryProvider).currentRoomName ?? '';
@@ -135,7 +135,11 @@ class GroupDrawer extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            GroupDrawerHeader(groupName: groupName),
+            GroupDrawerHeader(
+              groupName: groupName,
+              groupDescription: groupSettingsAsync.value?.description ?? '',
+              groupAvatarBase64: groupSettingsAsync.value?.avatarBase64 ?? '',
+            ),
 
             Expanded(
               child: SingleChildScrollView(
@@ -315,6 +319,18 @@ class GroupDrawer extends ConsumerWidget {
                     },
                   ),
                 GroupDrawerItem(
+                  icon: Icons.person_outline,
+                  label: 'My Profile',
+                  isSelected: false,
+                  onTap: () {
+                    showDialog(
+                      context: context,
+                      builder: (_) => const GroupUserEditorDialog(),
+                    );
+                    onItemSelected?.call();
+                  },
+                ),
+                GroupDrawerItem(
                   icon: Icons.exit_to_app,
                   label: 'Leave Group',
                   isSelected: false,
@@ -377,24 +393,10 @@ class GroupDrawer extends ConsumerWidget {
                   ),
                   child: Row(
                     children: [
-                      Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.surfaceContainerHigh,
-                          shape: BoxShape.circle,
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          initials,
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurface,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                      ProfileAvatar(
+                        displayName: myDisplayName,
+                        avatarBase64: myAvatarBase64,
+                        size: 36,
                       ),
                       const SizedBox(width: 12),
                       Expanded(

@@ -704,16 +704,15 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
         );
 
         return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 3),
+          padding: const EdgeInsets.fromLTRB(12, 3, 0, 3),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               SizedBox(
-                width: 52,
+                width: 42,
                 child: Text(
                   timeText,
-                  textAlign: TextAlign.right,
+                  textAlign: TextAlign.left,
                   style: TextStyle(
                     fontSize: 11,
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -721,35 +720,32 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
                   ),
                 ),
               ),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 10),
-                  child: Text.rich(
-                    TextSpan(
-                      children: [
-                        TextSpan(
-                          text: displayName,
-                          style: TextStyle(
-                            color: nameColor,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 13,
-                            height: 1.25,
-                          ),
-                        ),
-                        const TextSpan(text: '  '),
-                        TextSpan(
-                          text: msg.content,
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurface,
-                            fontSize: 14,
-                            height: 1.25,
-                          ),
-                        ),
-                      ],
-                    ),
-                    textAlign: TextAlign.left,
-                    softWrap: true,
+              const SizedBox(width: 6),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 140),
+                child: Text(
+                  displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: nameColor,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    height: 1.25,
                   ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  msg.content,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface,
+                    fontSize: 14,
+                    height: 1.25,
+                  ),
+                  textAlign: TextAlign.left,
+                  softWrap: true,
                 ),
               ),
             ],
@@ -1478,9 +1474,6 @@ class _StartPrivateChatDialog extends StatelessWidget {
                       ? 'Member'
                       : profile.displayName.trim();
                   return ListTile(
-                    leading: CircleAvatar(
-                      child: Text(title.substring(0, 1).toUpperCase()),
-                    ),
                     title: Text(title),
                     onTap: () => Navigator.pop(context, profile.id),
                   );

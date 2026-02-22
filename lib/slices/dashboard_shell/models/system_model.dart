@@ -131,6 +131,8 @@ class GroupInvite with GroupInviteMappable {
 class GroupSettings with GroupSettingsMappable {
   final String id;
   final String name;
+  final String description;
+  final String avatarBase64;
   final DateTime createdAt;
   final int logicalTime;
   final GroupType groupType;
@@ -142,6 +144,8 @@ class GroupSettings with GroupSettingsMappable {
   GroupSettings({
     required this.id,
     required this.name,
+    this.description = '',
+    this.avatarBase64 = '',
     required this.createdAt,
     this.logicalTime = 0,
     this.groupType = GroupType.family,

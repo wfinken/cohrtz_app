@@ -167,6 +167,8 @@ class _GroupSelectionRailState extends ConsumerState<GroupSelectionRail> {
                       final group = knownGroups[index];
                       final roomName = group['roomName'] ?? '';
                       final friendlyName = group['friendlyName'] ?? roomName;
+                      final groupAvatarBase64 = group['avatarBase64'] ?? '';
+                      final groupDescription = group['description'] ?? '';
                       final isActive = currentRoomName == roomName;
                       final icon = _getGroupIcon(friendlyName);
 
@@ -189,6 +191,8 @@ class _GroupSelectionRailState extends ConsumerState<GroupSelectionRail> {
                           isActive: isActive,
                           isConnected: isConnected,
                           memberCount: memberCount,
+                          avatarBase64: groupAvatarBase64,
+                          groupDescription: groupDescription,
                           onTap: () => _connectToGroup(group),
                         ),
                       );

@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
+import 'package:cohortz/shared/profile/avatar_picker_service.dart';
+import 'package:cohortz/shared/profile/avatar_processing_service.dart';
+import 'package:cohortz/shared/profile/profile_constants.dart';
+import 'package:cohortz/shared/widgets/profile_avatar.dart';
 
 import '../../../../app/di/app_providers.dart';
 import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
@@ -17,6 +21,9 @@ class GroupSettingsDialog extends ConsumerStatefulWidget {
 class _GroupSettingsDialogState extends ConsumerState<GroupSettingsDialog> {
   GroupType _selectedType = GroupType.family;
   late TextEditingController _nameController;
+  late TextEditingController _descriptionController;
+  String _avatarBase64 = '';
+  bool _saving = false;
 
   String _formatSize(int bytes) {
     if (bytes <= 0) return '0 B';
@@ -34,11 +41,13 @@ class _GroupSettingsDialogState extends ConsumerState<GroupSettingsDialog> {
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: 'My Group');
+    _descriptionController = TextEditingController();
   }
 
   @override
   void dispose() {
     _nameController.dispose();
+    _descriptionController.dispose();
     super.dispose();
   }
 
@@ -68,6 +77,8 @@ class _GroupSettingsDialogState extends ConsumerState<GroupSettingsDialog> {
     if (!_initialized && currentSettings != null) {
       _selectedType = currentSettings.groupType;
       _nameController.text = currentSettings.name;
+      _descriptionController.text = currentSettings.description;
+      _avatarBase64 = currentSettings.avatarBase64;
       _initialized = true;
     }
 
@@ -108,14 +119,66 @@ class _GroupSettingsDialogState extends ConsumerState<GroupSettingsDialog> {
               ],
             ),
             const SizedBox(height: 24),
+            Row(
+              children: [
+                ProfileAvatar(
+                  displayName: _nameController.text.trim().isEmpty
+                      ? 'Group'
+                      : _nameController.text.trim(),
+                  avatarBase64: _avatarBase64,
+                  fallbackIcon: Icons.groups_2_outlined,
+                  size: 56,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: _saving ? null : () => _pickAvatar(context),
+                        icon: const Icon(Icons.upload_file),
+                        label: Text(
+                          _avatarBase64.trim().isEmpty
+                              ? 'Upload Avatar'
+                              : 'Change Avatar',
+                        ),
+                      ),
+                      if (_avatarBase64.trim().isNotEmpty)
+                        ElevatedButton.icon(
+                          onPressed: _saving
+                              ? null
+                              : () => setState(() => _avatarBase64 = ''),
+                          icon: const Icon(Icons.delete_outline),
+                          label: const Text('Remove'),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
             TextFormField(
               controller: _nameController,
+              onChanged: (_) => setState(() {}),
               decoration: InputDecoration(
                 labelText: 'Group Name',
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 16,
                   vertical: 14,
                 ),
+              ),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _descriptionController,
+              maxLength: kGroupDescriptionMaxLength,
+              minLines: 2,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Description',
+                hintText: 'Tell members what this group is for',
               ),
               style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
             ),
@@ -271,13 +334,21 @@ class _GroupSettingsDialogState extends ConsumerState<GroupSettingsDialog> {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 ElevatedButton(
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: _saving ? null : () => Navigator.of(context).pop(),
                   child: const Text('Cancel'),
                 ),
                 const SizedBox(width: 16),
                 ElevatedButton(
-                  onPressed: () => _saveSettings(context, currentSettings),
-                  child: const Text('Save Changes'),
+                  onPressed: _saving
+                      ? null
+                      : () => _saveSettings(context, currentSettings),
+                  child: _saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Save Changes'),
                 ),
               ],
             ),
@@ -333,26 +404,62 @@ class _GroupSettingsDialogState extends ConsumerState<GroupSettingsDialog> {
     }
   }
 
+  Future<void> _pickAvatar(BuildContext context) async {
+    try {
+      final result = await AvatarPickerService.pickCropAndProcessAvatar(
+        context,
+      );
+      if (result == null || !mounted) return;
+      setState(() => _avatarBase64 = result.base64Data);
+    } on AvatarTooLargeException {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Image is still too large after compression. Please choose a simpler image.',
+          ),
+        ),
+      );
+    } on AvatarDecodeException {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not read that image file.')),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Unable to process avatar: $e')));
+    }
+  }
+
   Future<void> _saveSettings(
     BuildContext context,
     GroupSettings? currentSettings,
   ) async {
+    setState(() => _saving = true);
     try {
       final repo = ref.read(dashboardRepositoryProvider);
       final localOwnerId = ref.read(syncServiceProvider).identity ?? '';
+      final normalizedName = _nameController.text.trim().isEmpty
+          ? 'My Group'
+          : _nameController.text.trim();
+      final normalizedDescription = _descriptionController.text.trim();
 
       final newSettings =
           currentSettings?.copyWith(
             groupType: _selectedType,
-            name: _nameController.text,
+            name: normalizedName,
+            description: normalizedDescription,
+            avatarBase64: _avatarBase64,
             dataRoomName: currentSettings.dataRoomName,
             invites: currentSettings.invites,
           ) ??
           GroupSettings(
             id: 'group_settings',
-            name: _nameController.text.isEmpty
-                ? 'My Group'
-                : _nameController.text,
+            name: normalizedName,
+            description: normalizedDescription,
+            avatarBase64: _avatarBase64,
             createdAt: ref
                 .read(hybridTimeServiceProvider)
                 .getAdjustedTimeLocal(),
@@ -372,7 +479,7 @@ class _GroupSettingsDialogState extends ConsumerState<GroupSettingsDialog> {
       debugPrint('[GroupSettingsDialog] Error saving settings: $e');
     } finally {
       if (mounted) {
-        setState(() {});
+        setState(() => _saving = false);
       }
     }
   }

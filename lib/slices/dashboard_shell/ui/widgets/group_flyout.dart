@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cohortz/shared/widgets/profile_avatar.dart';
 
 /// A Discord-style flyout that appears when hovering over a group button.
 /// Displays the group name, connection status, and member count.
@@ -6,12 +7,16 @@ class GroupFlyout extends StatelessWidget {
   final String groupName;
   final bool isConnected;
   final int memberCount;
+  final String groupAvatarBase64;
+  final String groupDescription;
 
   const GroupFlyout({
     super.key,
     required this.groupName,
     required this.isConnected,
     required this.memberCount,
+    this.groupAvatarBase64 = '',
+    this.groupDescription = '',
   });
 
   @override
@@ -30,16 +35,39 @@ class GroupFlyout extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Group Name
-            Text(
-              groupName,
-              style: textTheme.titleMedium?.copyWith(
-                color: colorScheme.onSurface,
-                fontWeight: FontWeight.bold,
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+            Row(
+              children: [
+                ProfileAvatar(
+                  displayName: groupName,
+                  avatarBase64: groupAvatarBase64,
+                  fallbackIcon: Icons.groups_2_outlined,
+                  size: 34,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    groupName,
+                    style: textTheme.titleMedium?.copyWith(
+                      color: colorScheme.onSurface,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
+            if (groupDescription.trim().isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                groupDescription.trim(),
+                style: textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
 
             const SizedBox(height: 12),
 

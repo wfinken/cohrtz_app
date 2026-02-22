@@ -146,6 +146,8 @@ class GroupManager {
     String dataRoomName,
     String identity, {
     String? friendlyName,
+    String? avatarBase64,
+    String? description,
     bool isInviteRoom = false,
     bool isHost = false,
     String? token,
@@ -168,6 +170,28 @@ class GroupManager {
             orElse: () => {},
           )['friendlyName'] ??
           roomName,
+      'avatarBase64':
+          avatarBase64 ??
+          _knownDataGroups.firstWhere(
+            (g) => g['roomName'] == roomName,
+            orElse: () => {},
+          )['avatarBase64'] ??
+          _knownInviteGroups.firstWhere(
+            (g) => g['roomName'] == roomName,
+            orElse: () => {},
+          )['avatarBase64'] ??
+          '',
+      'description':
+          description ??
+          _knownDataGroups.firstWhere(
+            (g) => g['roomName'] == roomName,
+            orElse: () => {},
+          )['description'] ??
+          _knownInviteGroups.firstWhere(
+            (g) => g['roomName'] == roomName,
+            orElse: () => {},
+          )['description'] ??
+          '',
       'isInviteRoom': isInviteRoom.toString(),
       'lastJoined': DateTime.now().toIso8601String(),
     };
