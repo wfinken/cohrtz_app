@@ -24,7 +24,17 @@ class NoteRepository {
 
   Future<void> saveNote(Note note) async {
     final db = _db;
-    if (db == null) return;
+    final roomName = _roomName;
+    if (db == null) {
+      if (roomName == null) return;
+      await _crdtService.put(
+        roomName,
+        _documentKey(note.id),
+        note.toJson(),
+        tableName: 'notes',
+      );
+      return;
+    }
     await db
         .into(db.notes)
         .insertOnConflictUpdate(
@@ -37,9 +47,8 @@ class NoteRepository {
   }
 
   Future<void> deleteNote(String documentId) async {
-    final db = _db;
     final roomName = _roomName;
-    if (db == null || roomName == null) return;
+    if (roomName == null) return;
 
     await _crdtService.delete(roomName, _documentKey(documentId), 'notes');
   }
@@ -53,7 +62,27 @@ class NoteRepository {
     DateTime? at,
   }) async {
     final db = _db;
-    if (db == null) return;
+    final roomName = _roomName;
+    if (db == null) {
+      if (roomName == null) return;
+      final time = _hybridTimeService;
+      final presence = NoteEditorPresence(
+        documentId: documentId,
+        userId: userId,
+        displayName: displayName,
+        colorHex: colorHex,
+        isEditing: isEditing,
+        lastSeenAt: at ?? time.getAdjustedTimeLocal(),
+        logicalTime: time.nextLogicalTime(),
+      );
+      await _crdtService.put(
+        roomName,
+        _presenceKey(documentId, userId),
+        presence.toJson(),
+        tableName: 'notes',
+      );
+      return;
+    }
     final time = _hybridTimeService;
     final presence = NoteEditorPresence(
       documentId: documentId,
@@ -80,9 +109,8 @@ class NoteRepository {
     required String documentId,
     required String userId,
   }) async {
-    final db = _db;
     final roomName = _roomName;
-    if (db == null || roomName == null) return;
+    if (roomName == null) return;
     await _crdtService.delete(
       roomName,
       _presenceKey(documentId, userId),
@@ -92,7 +120,37 @@ class NoteRepository {
 
   Stream<List<Note>> watchNotes() {
     final db = _db;
-    if (db == null) return Stream.value([]);
+    final roomName = _roomName;
+    if (db == null) {
+      if (roomName == null) return Stream.value([]);
+      return _crdtService
+          .watch(roomName, 'SELECT id, value FROM notes WHERE is_deleted = 0')
+          .map((rows) {
+            final documents = rows
+                .map((row) {
+                  final id = row['id'] as String? ?? '';
+                  if (id.startsWith(_presencePrefix)) return null;
+                  final value = row['value'] as String? ?? '';
+                  if (value.isEmpty) return null;
+                  try {
+                    return _normalizeNote(NoteMapper.fromJson(value));
+                  } catch (e) {
+                    Log.e('[NoteRepository]', 'Error decoding Note: $value', e);
+                    return null;
+                  }
+                })
+                .whereType<Note>()
+                .toList();
+            documents.sort((a, b) {
+              final byPhysical = b.updatedAt.millisecondsSinceEpoch.compareTo(
+                a.updatedAt.millisecondsSinceEpoch,
+              );
+              if (byPhysical != 0) return byPhysical;
+              return b.logicalTime.compareTo(a.logicalTime);
+            });
+            return documents;
+          });
+    }
     return (db.select(db.notes)
           ..where((t) => t.isDeleted.equals(0))
           ..where((t) => t.id.like('$_presencePrefix%').not()))
@@ -127,7 +185,27 @@ class NoteRepository {
 
   Stream<Note?> watchDocument(String documentId) {
     final db = _db;
-    if (db == null) return Stream.value(null);
+    final roomName = _roomName;
+    if (db == null) {
+      if (roomName == null) return Stream.value(null);
+      final documentKey = _documentKey(documentId);
+      return _crdtService
+          .watch(roomName, 'SELECT id, value FROM notes WHERE is_deleted = 0')
+          .map((rows) {
+            for (final row in rows) {
+              final id = row['id'] as String? ?? '';
+              if (id != documentKey && id != documentId) continue;
+              final value = row['value'] as String? ?? '';
+              if (value.isEmpty) return null;
+              try {
+                return _normalizeNote(NoteMapper.fromJson(value));
+              } catch (_) {
+                return null;
+              }
+            }
+            return null;
+          });
+    }
     return (db.select(db.notes)
           ..where(
             (t) =>
@@ -153,14 +231,26 @@ class NoteRepository {
     Duration activeThreshold = const Duration(seconds: 20),
   }) {
     final db = _db;
-    if (db == null) return Stream.value([]);
+    final roomName = _roomName;
+    if (db == null && roomName == null) return Stream.value([]);
 
-    final prefix = '${_presencePrefixForDocument(documentId)}%';
-    final source =
-        (db.select(db.notes)
-              ..where((t) => t.id.like(prefix))
-              ..where((t) => t.isDeleted.equals(0)))
-            .watch();
+    final presencePrefix = _presencePrefixForDocument(documentId);
+    final Stream<List<dynamic>> source = db == null
+        ? _crdtService
+              .watch(
+                roomName!,
+                'SELECT id, value FROM notes WHERE is_deleted = 0',
+              )
+              .map((rows) {
+                return rows.where((row) {
+                  final id = row['id'] as String? ?? '';
+                  return id.startsWith(presencePrefix);
+                }).toList();
+              })
+        : (db.select(db.notes)
+                ..where((t) => t.id.like('$presencePrefix%'))
+                ..where((t) => t.isDeleted.equals(0)))
+              .watch();
 
     return Stream.multi((controller) {
       List<NoteEditorPresence> latest = [];
@@ -183,7 +273,10 @@ class NoteRepository {
         latest = rows
             .map((row) {
               try {
-                final value = row.value;
+                final value = db == null
+                    ? (row['value'] as String? ?? '')
+                    : row.value;
+                if (value.isEmpty) return null;
                 return NoteEditorPresenceMapper.fromJson(value);
               } catch (_) {
                 return null;

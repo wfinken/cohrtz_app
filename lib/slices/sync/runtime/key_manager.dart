@@ -239,23 +239,33 @@ class KeyManager {
     final now = DateTime.now();
     final last = _lastRequestTime[roomName];
 
-    // Throttle requests to once every 10 seconds per room, unless forced
+    // Throttle requests to once every 2 seconds per room, unless forced.
+    // Join flows can otherwise stall if an early request races before peers are
+    // ready to share keys.
     if (!force &&
         last != null &&
-        now.difference(last) < const Duration(seconds: 10)) {
+        now.difference(last) < const Duration(seconds: 2)) {
       return;
     }
 
-    _lastRequestTime[roomName] = now;
-    Log.d('KeyManager', 'Broadcasting GSK_REQ for $roomName');
+    final senderId = getLocalParticipantIdForRoom(roomName);
+    if (senderId.isEmpty) {
+      Log.w(
+        'KeyManager',
+        'Skipping GSK_REQ for $roomName: local participant identity not ready.',
+      );
+      return;
+    }
 
     final payload = utf8.encode(jsonEncode({'type': 'GSK_REQ'}));
     final packet = P2PPacket()
       ..type = P2PPacket_PacketType.UNICAST_REQ
       ..requestId = const Uuid().v4()
-      ..senderId = getLocalParticipantIdForRoom(roomName)
+      ..senderId = senderId
       ..payload = payload;
 
+    _lastRequestTime[roomName] = now;
+    Log.d('KeyManager', 'Broadcasting GSK_REQ for $roomName');
     await broadcast(roomName, packet);
   }
 

@@ -227,8 +227,41 @@ class DashboardRepository {
 
   Stream<List<UserProfile>> watchUserProfiles() {
     final db = _db;
+    final roomName = _roomName;
     if (db == null) {
-      return Stream.value([]);
+      if (roomName == null) return Stream.value([]);
+      return _crdtService
+          .watch(
+            roomName,
+            'SELECT value FROM user_profiles WHERE is_deleted = 0',
+          )
+          .map((rows) {
+            final profiles = rows
+                .map((row) {
+                  final value = row['value'] as String? ?? '';
+                  if (value.isEmpty) return null;
+                  try {
+                    return UserProfileMapper.fromJson(value);
+                  } catch (_) {
+                    try {
+                      final unwrapped = jsonDecode(value);
+                      if (unwrapped is String) {
+                        return UserProfileMapper.fromJson(unwrapped);
+                      }
+                    } catch (e) {
+                      Log.e(
+                        '[DashboardRepository]',
+                        'Error decoding UserProfile',
+                        e,
+                      );
+                    }
+                    return null;
+                  }
+                })
+                .whereType<UserProfile>()
+                .toList();
+            return profiles;
+          });
     }
     return (db.select(
       db.userProfiles,
@@ -259,7 +292,17 @@ class DashboardRepository {
 
   Future<void> saveUserProfile(UserProfile profile) async {
     final db = _db;
-    if (db == null) return;
+    final roomName = _roomName;
+    if (db == null) {
+      if (roomName == null) return;
+      await _crdtService.put(
+        roomName,
+        profile.id,
+        jsonEncode(profile.toMap()),
+        tableName: 'user_profiles',
+      );
+      return;
+    }
     await db
         .into(db.userProfiles)
         .insertOnConflictUpdate(
@@ -272,9 +315,8 @@ class DashboardRepository {
   }
 
   Future<void> deleteUserProfile(String id) async {
-    final db = _db;
     final roomName = _roomName;
-    if (db == null || roomName == null) return;
+    if (roomName == null) return;
 
     // Use CRDT delete for proper tombstoning and sync
     await _crdtService.delete(roomName, id, 'user_profiles');
@@ -282,7 +324,31 @@ class DashboardRepository {
 
   Stream<List<PollItem>> watchPolls() {
     final db = _db;
-    if (db == null) return Stream.value([]);
+    final roomName = _roomName;
+    if (db == null) {
+      if (roomName == null) return Stream.value([]);
+      return _crdtService
+          .watch(roomName, 'SELECT value FROM polls WHERE is_deleted = 0')
+          .map((rows) {
+            return rows
+                .map((row) {
+                  final value = row['value'] as String? ?? '';
+                  if (value.isEmpty) return null;
+                  try {
+                    return PollItemMapper.fromJson(value);
+                  } catch (e) {
+                    Log.e(
+                      '[DashboardRepository]',
+                      'Error decoding PollItem',
+                      e,
+                    );
+                    return null;
+                  }
+                })
+                .whereType<PollItem>()
+                .toList();
+          });
+    }
     return (db.select(
       db.polls,
     )..where((t) => t.isDeleted.equals(0))).watch().map((rows) {
@@ -303,7 +369,17 @@ class DashboardRepository {
 
   Future<void> savePoll(PollItem poll) async {
     final db = _db;
-    if (db == null) return;
+    final roomName = _roomName;
+    if (db == null) {
+      if (roomName == null) return;
+      await _crdtService.put(
+        roomName,
+        poll.id,
+        jsonEncode(poll.toMap()),
+        tableName: 'polls',
+      );
+      return;
+    }
     await db
         .into(db.polls)
         .insertOnConflictUpdate(
@@ -316,9 +392,8 @@ class DashboardRepository {
   }
 
   Future<void> deletePoll(String id) async {
-    final db = _db;
     final roomName = _roomName;
-    if (db == null || roomName == null) return;
+    if (roomName == null) return;
 
     // Use CRDT delete for proper tombstoning and sync
     await _crdtService.delete(roomName, id, 'polls');
@@ -326,7 +401,30 @@ class DashboardRepository {
 
   Stream<GroupSettings?> watchGroupSettings() {
     final db = _db;
-    if (db == null) return Stream.value(null);
+    final roomName = _roomName;
+    if (db == null) {
+      if (roomName == null) return Stream.value(null);
+      return _crdtService
+          .watch(
+            roomName,
+            'SELECT id, value FROM group_settings WHERE is_deleted = 0',
+          )
+          .map((rows) {
+            if (rows.isEmpty) return null;
+            final canonical = rows.firstWhere(
+              (r) => (r['id'] as String?) == 'group_settings',
+              orElse: () => rows.first,
+            );
+            final jsonStr = canonical['value'] as String? ?? '';
+            if (jsonStr.isEmpty) return null;
+            try {
+              return GroupSettingsMapper.fromJson(jsonStr);
+            } catch (e) {
+              Log.e('[DashboardRepository]', 'Error decoding GroupSettings', e);
+              return null;
+            }
+          });
+    }
     return db.select(db.groupSettingsTable).watch().asyncMap((rows) async {
       if (rows.isEmpty) return null;
 
@@ -399,10 +497,20 @@ class DashboardRepository {
 
   Future<void> saveGroupSettings(GroupSettings settings) async {
     final db = _db;
-    if (db == null) return;
+    final roomName = _roomName;
     final safeSettings = settings.id != 'group_settings'
         ? settings.copyWith(id: 'group_settings')
         : settings;
+    if (db == null) {
+      if (roomName == null) return;
+      await _crdtService.put(
+        roomName,
+        safeSettings.id,
+        jsonEncode(safeSettings.toMap()),
+        tableName: 'group_settings',
+      );
+      return;
+    }
 
     await db
         .into(db.groupSettingsTable)
@@ -417,7 +525,34 @@ class DashboardRepository {
 
   Stream<List<DashboardWidget>> watchWidgets() {
     final db = _db;
-    if (db == null) return Stream.value([]);
+    final roomName = _roomName;
+    if (db == null) {
+      if (roomName == null) return Stream.value([]);
+      return _crdtService
+          .watch(
+            roomName,
+            'SELECT value FROM dashboard_widgets WHERE is_deleted = 0',
+          )
+          .map((rows) {
+            return rows
+                .map((row) {
+                  final value = row['value'] as String? ?? '';
+                  if (value.isEmpty) return null;
+                  try {
+                    return DashboardWidgetMapper.fromJson(value);
+                  } catch (e) {
+                    Log.e(
+                      '[DashboardRepository]',
+                      'Error decoding DashboardWidget',
+                      e,
+                    );
+                    return null;
+                  }
+                })
+                .whereType<DashboardWidget>()
+                .toList();
+          });
+    }
     return (db.select(
       db.dashboardWidgets,
     )..where((t) => t.isDeleted.equals(0))).watch().map((rows) {
@@ -442,7 +577,17 @@ class DashboardRepository {
 
   Future<void> saveWidget(DashboardWidget widget) async {
     final db = _db;
-    if (db == null) return;
+    final roomName = _roomName;
+    if (db == null) {
+      if (roomName == null) return;
+      await _crdtService.put(
+        roomName,
+        widget.id,
+        jsonEncode(widget.toMap()),
+        tableName: 'dashboard_widgets',
+      );
+      return;
+    }
     await db
         .into(db.dashboardWidgets)
         .insertOnConflictUpdate(
@@ -455,9 +600,8 @@ class DashboardRepository {
   }
 
   Future<void> deleteWidget(String id) async {
-    final db = _db;
     final roomName = _roomName;
-    if (db == null || roomName == null) return;
+    if (roomName == null) return;
 
     // Use CRDT delete for proper tombstoning and sync
     await _crdtService.delete(roomName, id, 'dashboard_widgets');

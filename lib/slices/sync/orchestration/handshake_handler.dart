@@ -142,12 +142,45 @@ class HandshakeHandler {
   }
 
   /// Gets the public key for a sender, or null if unknown.
-  List<int>? getPublicKey(String roomName, String senderId) =>
-      _knownPublicKeysByRoom[roomName]?[senderId];
+  List<int>? getPublicKey(String roomName, String senderId) {
+    final roomKeys = _knownPublicKeysByRoom[roomName];
+    if (roomKeys == null || roomKeys.isEmpty || senderId.isEmpty) {
+      return null;
+    }
+
+    final exact = roomKeys[senderId];
+    if (exact != null) {
+      return exact;
+    }
+
+    return _lookupByCanonicalIdentity(roomKeys, senderId);
+  }
 
   /// Gets the encryption key for a sender, or null if unknown.
-  List<int>? getEncryptionKey(String roomName, String senderId) =>
-      _knownEncryptionKeysByRoom[roomName]?[senderId];
+  List<int>? getEncryptionKey(String roomName, String senderId) {
+    final roomKeys = _knownEncryptionKeysByRoom[roomName];
+    if (roomKeys == null || roomKeys.isEmpty || senderId.isEmpty) {
+      return null;
+    }
+
+    final exact = roomKeys[senderId];
+    if (exact != null) {
+      return exact;
+    }
+
+    final canonicalMatch = _lookupByCanonicalIdentity(roomKeys, senderId);
+    if (canonicalMatch != null) {
+      return canonicalMatch;
+    }
+
+    // Identity can briefly diverge during join/reconnect races. When only one
+    // remote key is known, use it as a temporary fallback.
+    if (roomKeys.length == 1) {
+      return roomKeys.values.first;
+    }
+
+    return null;
+  }
 
   /// Buffers a packet for later processing when we receive the sender's key.
   void bufferPacket(String roomName, String senderId, P2PPacket packet) {
@@ -163,8 +196,25 @@ class HandshakeHandler {
 
   /// Gets and clears pending packets for a sender.
   List<P2PPacket> clearPendingPackets(String roomName, String senderId) {
-    final pending = _pendingPacketsByRoom[roomName]?[senderId] ?? [];
-    _pendingPacketsByRoom[roomName]?.remove(senderId);
+    final bySender = _pendingPacketsByRoom[roomName];
+    if (bySender == null || bySender.isEmpty || senderId.isEmpty) {
+      return const [];
+    }
+
+    final pending = <P2PPacket>[];
+    final canonicalSenderId = _canonicalIdentity(senderId);
+    final matchedKeys = bySender.keys
+        .where((id) => _canonicalIdentity(id) == canonicalSenderId)
+        .toList();
+
+    if (matchedKeys.isEmpty && bySender.containsKey(senderId)) {
+      matchedKeys.add(senderId);
+    }
+
+    for (final id in matchedKeys) {
+      pending.addAll(bySender.remove(id) ?? const []);
+    }
+
     return pending;
   }
 
@@ -217,5 +267,27 @@ class HandshakeHandler {
     _pendingPacketsByRoom.clear();
     _lastBroadcastTime.clear();
     _lastRequestTime.clear();
+  }
+
+  List<int>? _lookupByCanonicalIdentity(
+    Map<String, List<int>> roomKeys,
+    String senderId,
+  ) {
+    final canonicalSenderId = _canonicalIdentity(senderId);
+    for (final entry in roomKeys.entries) {
+      if (_canonicalIdentity(entry.key) == canonicalSenderId) {
+        return entry.value;
+      }
+    }
+    return null;
+  }
+
+  String _canonicalIdentity(String raw) {
+    final value = raw.trim();
+    if (value.isEmpty) return value;
+    if (value.startsWith('user:')) {
+      return value.substring(5).toLowerCase();
+    }
+    return value.toLowerCase();
   }
 }

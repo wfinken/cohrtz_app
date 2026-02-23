@@ -18,7 +18,27 @@ class TaskRepository extends RoomRepositoryBase implements ITaskRepository {
   @override
   Stream<List<TaskItem>> watchTasks() {
     final activeDb = db;
-    if (activeDb == null) return Stream.value([]);
+    final activeRoom = roomName;
+    if (activeDb == null) {
+      if (activeRoom == null) return Stream.value([]);
+      return crdtService
+          .watch(activeRoom, 'SELECT value FROM tasks WHERE is_deleted = 0')
+          .map((rows) {
+            return rows
+                .map((row) {
+                  final value = row['value'] as String? ?? '';
+                  if (value.isEmpty) return null;
+                  try {
+                    return TaskItemMapper.fromJson(value);
+                  } catch (e) {
+                    Log.e('[TaskRepository]', 'Error decoding TaskItem', e);
+                    return null;
+                  }
+                })
+                .whereType<TaskItem>()
+                .toList();
+          });
+    }
     return (activeDb.select(
       activeDb.tasks,
     )..where((t) => t.isDeleted.equals(0))).watch().map((rows) {
@@ -43,7 +63,17 @@ class TaskRepository extends RoomRepositoryBase implements ITaskRepository {
   @override
   Future<void> saveTask(TaskItem task) async {
     final activeDb = db;
-    if (activeDb == null) return;
+    final activeRoom = roomName;
+    if (activeDb == null) {
+      if (activeRoom == null) return;
+      await crdtService.put(
+        activeRoom,
+        task.id,
+        jsonEncode(task.toMap()),
+        tableName: 'tasks',
+      );
+      return;
+    }
     await activeDb
         .into(activeDb.tasks)
         .insertOnConflictUpdate(

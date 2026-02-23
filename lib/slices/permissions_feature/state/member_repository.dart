@@ -15,7 +15,26 @@ class MemberRepository {
 
   Stream<List<GroupMember>> watchMembers() {
     final db = _db;
-    if (db == null) return Stream.value([]);
+    final roomName = _roomName;
+    if (db == null) {
+      if (roomName == null) return Stream.value([]);
+      return _crdtService
+          .watch(roomName, 'SELECT value FROM members WHERE is_deleted = 0')
+          .map((rows) {
+            return rows
+                .map((row) {
+                  final jsonStr = row['value'] as String? ?? '';
+                  if (jsonStr.isEmpty) return null;
+                  try {
+                    return GroupMemberMapper.fromJson(jsonStr);
+                  } catch (_) {
+                    return null;
+                  }
+                })
+                .whereType<GroupMember>()
+                .toList();
+          });
+    }
     return (db.select(
       db.members,
     )..where((t) => t.isDeleted.equals(0))).watch().map((rows) {
@@ -28,7 +47,17 @@ class MemberRepository {
 
   Future<void> saveMember(GroupMember member) async {
     final db = _db;
-    if (db == null) return;
+    final roomName = _roomName;
+    if (db == null) {
+      if (roomName == null) return;
+      await _crdtService.put(
+        roomName,
+        member.id,
+        jsonEncode(member.toMap()),
+        tableName: 'members',
+      );
+      return;
+    }
     await db
         .into(db.members)
         .insertOnConflictUpdate(
@@ -41,9 +70,8 @@ class MemberRepository {
   }
 
   Future<void> deleteMember(String id) async {
-    final db = _db;
     final roomName = _roomName;
-    if (db == null || roomName == null) return;
+    if (roomName == null) return;
     await _crdtService.delete(roomName, id, 'members');
   }
 }

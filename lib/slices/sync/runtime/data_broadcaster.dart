@@ -47,6 +47,14 @@ class DataBroadcaster {
     if (room == null || room.connectionState != ConnectionState.connected) {
       return;
     }
+    final resolvedSenderId = _resolveSenderIdentity(
+      roomName,
+      room,
+      packet.senderId,
+    );
+    if (resolvedSenderId.isNotEmpty && packet.senderId != resolvedSenderId) {
+      packet.senderId = resolvedSenderId;
+    }
 
     // Stamp envelope timestamps once (buffered packets keep their original values).
     _hybridTimeService.stampOutgoingPacket(packet);
@@ -159,29 +167,49 @@ class DataBroadcaster {
         // For now, simple log.
         Log.d('DataBroadcaster', 'Encrypting broadcast with GSK for $roomName');
 
-        final payloadToEncrypt = packet.payload.isNotEmpty
-            ? packet.payload
-            : packet.requestId.codeUnits;
+        // Keep the original packet untouched so pairwise fallback can still
+        // encrypt clear payload if GSK publish fails.
+        final gskPacket = P2PPacket.fromBuffer(packet.writeToBuffer());
+        final payloadToEncrypt = gskPacket.payload.isNotEmpty
+            ? gskPacket.payload
+            : gskPacket.requestId.codeUnits;
 
         final encryptedPayload = await _encryptionService.encrypt(
           payloadToEncrypt,
           gsk,
         );
 
-        packet.encrypted = true;
-        packet.payload = encryptedPayload;
-        await _securityService.signPacket(packet, groupId: roomName);
+        gskPacket.encrypted = true;
+        gskPacket.payload = encryptedPayload;
+        await _securityService.signPacket(gskPacket, groupId: roomName);
 
-        await _publishWithRetry(room, packet.writeToBuffer());
+        await _publishWithRetry(room, gskPacket.writeToBuffer());
         _emitPacketDiagnostic(
           roomName: roomName,
-          packet: packet,
+          packet: gskPacket,
           direction: SyncDiagnosticDirection.outbound,
           message:
-              'Broadcast encrypted ${_packetLabel(packet.type)} payload with group key.',
+              'Broadcast encrypted ${_packetLabel(gskPacket.type)} payload with group key.',
         );
         return;
       } catch (e) {
+        final missingGroupKey =
+            e is StateError &&
+            e.toString().contains('Group Secret Key not available immediately');
+        if (missingGroupKey) {
+          if (packet.type != P2PPacket_PacketType.CONSISTENCY_CHECK) {
+            _bufferPacket(roomName, packet);
+          }
+          unawaited(
+            _getGroupKey(
+              roomName,
+              allowWait: true,
+            ).then((_) => retryBufferedPackets(roomName)).catchError((_) {}),
+          );
+          if (packet.type == P2PPacket_PacketType.CONSISTENCY_CHECK) {
+            return;
+          }
+        }
         Log.w(
           'DataBroadcaster',
           'Failed to broadcast E2EE packet in $roomName: $e. Attempting pairwise fallback...',
@@ -234,7 +262,7 @@ class DataBroadcaster {
     if (_flushTimer != null && _flushTimer!.isActive) return;
     Log.d('DataBroadcaster', 'Starting buffer flush timer...');
     _flushTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
-      if (_outgoingQueue.isEmpty) {
+      if (_outgoingQueue.isEmpty && _pendingUnicast.isEmpty) {
         timer.cancel();
         _flushTimer = null;
         Log.d('DataBroadcaster', 'Buffer empty. Stopping flush timer.');
@@ -244,6 +272,9 @@ class DataBroadcaster {
       // Retry all rooms
       for (final roomName in _outgoingQueue.keys.toList()) {
         retryBufferedPackets(roomName);
+      }
+      for (final roomName in _pendingUnicast.keys.toList()) {
+        retryPendingUnicast(roomName);
       }
     });
   }
@@ -346,7 +377,7 @@ class DataBroadcaster {
       final unicastPacket = P2PPacket()
         ..type = packet.type
         ..requestId = packet.requestId
-        ..senderId = _getLocalParticipantIdForRoom(roomName)
+        ..senderId = _resolveSenderIdentity(roomName, room, packet.senderId)
         ..physicalTime = packet.physicalTime
         ..logicalTime = packet.logicalTime
         ..encrypted = true
@@ -368,13 +399,27 @@ class DataBroadcaster {
         unicastPacket.writeToBuffer(),
         destinationIdentities: [targetIdentity],
       );
-    } catch (e) {
-      Log.e(
+    } catch (_) {
+      Log.w(
         'DataBroadcaster',
-        'Failed to send E2EE packet to $targetIdentity after retries',
-        e,
+        'Failed to send E2EE packet to $targetIdentity after retries. Buffering for retry.',
       );
+      _bufferUnicast(roomName, targetIdentity, packet);
     }
+  }
+
+  String _resolveSenderIdentity(String roomName, Room room, String fallback) {
+    final livekitIdentity = room.localParticipant?.identity;
+    if (livekitIdentity != null && livekitIdentity.isNotEmpty) {
+      return livekitIdentity;
+    }
+
+    final cachedIdentity = _getLocalParticipantIdForRoom(roomName);
+    if (cachedIdentity.isNotEmpty) {
+      return cachedIdentity;
+    }
+
+    return fallback;
   }
 
   void _bufferUnicast(
@@ -397,12 +442,14 @@ class DataBroadcaster {
       'DataBroadcaster',
       'Buffered secure packet for $targetIdentity in $roomName. Queue size: ${queue.length}',
     );
+    _startFlushTimer();
   }
 
   bool _shouldDeDuplicateControlPacket(P2PPacket packet) {
     return packet.type == P2PPacket_PacketType.HANDSHAKE ||
         packet.type == P2PPacket_PacketType.SYNC_REQ ||
-        packet.type == P2PPacket_PacketType.SYNC_CLAIM;
+        packet.type == P2PPacket_PacketType.SYNC_CLAIM ||
+        packet.type == P2PPacket_PacketType.CONSISTENCY_CHECK;
   }
 
   Future<void> retryPendingUnicast(

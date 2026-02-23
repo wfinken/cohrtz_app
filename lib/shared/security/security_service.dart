@@ -261,10 +261,8 @@ class SecurityService {
     } catch (_) {
       // Backward-compatible: ignore if the packet type doesn't support these fields.
     }
-    final physicalBuf = ByteData(8)..setInt64(0, physical, Endian.little);
-    final logicalBuf = ByteData(8)..setInt64(0, logical, Endian.little);
-    builder.add(physicalBuf.buffer.asUint8List());
-    builder.add(logicalBuf.buffer.asUint8List());
+    builder.add(_int64ToLittleEndianBytes(physical));
+    builder.add(_int64ToLittleEndianBytes(logical));
 
     // Optional fields
     // For integers, we use a 4-byte little-endian representation to be deterministic
@@ -276,6 +274,25 @@ class SecurityService {
     builder.addByte(packet.encrypted ? 1 : 0);
 
     return builder.takeBytes();
+  }
+
+  // ByteData.setInt64/getInt64 are unsupported on dart2js.
+  // Encode signed int64 manually in little-endian so signatures are stable
+  // across native and web runtimes.
+  Uint8List _int64ToLittleEndianBytes(int value) {
+    final bytes = Uint8List(8);
+    var v = BigInt.from(value);
+    final mod64 = BigInt.one << 64;
+    if (v.isNegative) {
+      v += mod64;
+    }
+
+    for (var i = 0; i < 8; i++) {
+      bytes[i] = (v & BigInt.from(0xFF)).toInt();
+      v = v >> 8;
+    }
+
+    return bytes;
   }
 
   Future<List<int>> getPublicKey({String? groupId}) async {
