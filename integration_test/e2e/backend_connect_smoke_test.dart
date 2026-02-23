@@ -5,7 +5,6 @@ import 'package:cohortz/app/di/app_providers.dart';
 import 'package:cohortz/app/main_app.dart';
 import 'package:cohortz/shared/config/app_config.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:integration_test/integration_test.dart';
@@ -42,7 +41,6 @@ void main() {
     'fetches token, connects to a backend room, then disconnects',
     (WidgetTester tester) async {
       SharedPreferences.setMockInitialValues({});
-      FlutterSecureStorage.setMockInitialValues({});
 
       final appScope = await createAppProviderScope(
         child: const MainApp(),

@@ -31,7 +31,6 @@ dependencies:
   table_calendar: ^3.1.0
   flutter_local_notifications: ^18.0.1
   # Security packages
-  flutter_secure_storage: ^9.2.4
   flutter_dashboard_grid:
     path: ../flutter_dashboard_grid
   dart_mappable: ^4.2.0

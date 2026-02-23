@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cohortz/shared/security/security_service.dart';
 import 'package:cohortz/shared/security/encryption_service.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:cohortz/shared/security/secure_storage_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -15,7 +15,7 @@ void main() {
 
     setUp(() async {
       SharedPreferences.setMockInitialValues({});
-      FlutterSecureStorage.setMockInitialValues({});
+      await SecureStorageService().deleteAll();
 
       // We need separate "storages" or just instances.
       // SecurityService uses SharedPreferences singleton.
@@ -35,14 +35,14 @@ void main() {
     test('Full Key Exchange and Encryption Cycle', () async {
       // 1. Setup Alice
       SharedPreferences.setMockInitialValues({});
-      FlutterSecureStorage.setMockInitialValues({});
+      await SecureStorageService().deleteAll();
       aliceSecurity = SecurityService();
       await aliceSecurity.initialize();
       final alicePub = await aliceSecurity.getEncryptionPublicKey();
 
       // 2. Setup Bob (Clear prefs to force new key generation)
       SharedPreferences.setMockInitialValues({});
-      FlutterSecureStorage.setMockInitialValues({});
+      await SecureStorageService().deleteAll();
       bobSecurity = SecurityService();
       await bobSecurity.initialize();
       final bobPub = await bobSecurity.getEncryptionPublicKey();

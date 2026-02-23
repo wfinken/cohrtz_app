@@ -1,6 +1,12 @@
-import 'package:flutter/foundation.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
+
+import 'package:cryptography/cryptography.dart';
+
+import 'encrypted_envelope_codec.dart';
+import 'encryption_service.dart';
+import 'master_key_provider.dart';
+import 'secure_kv_backend.dart';
+import 'secure_kv_backend_factory.dart';
 
 abstract class ISecureStore {
   Future<String?> read(String key);
@@ -11,157 +17,90 @@ abstract class ISecureStore {
   bool get isSecure;
 }
 
-/// Platform-aware secure storage service.
-/// Uses FlutterSecureStorage on native platforms, falls back to SharedPreferences on web.
-///
-/// WARNING: Web storage is NOT secure and should only be used for development.
 class SecureStorageService implements ISecureStore {
-  final FlutterSecureStorage _secureStorage;
-  final Future<SharedPreferences> Function() _prefsFactory;
+  final SecureKvBackend _backend;
+  final MasterKeyProvider _masterKeyProvider;
+  final EncryptionService _encryptionService;
+
+  SecretKey? _masterKey;
+  Future<void>? _initializationFuture;
+  bool _initializedSecurely = false;
 
   SecureStorageService({
-    FlutterSecureStorage? secureStorage,
-    Future<SharedPreferences> Function()? prefsFactory,
-  }) : _secureStorage =
-           secureStorage ??
-           const FlutterSecureStorage(
-             aOptions: AndroidOptions(encryptedSharedPreferences: true),
-             iOptions: IOSOptions(
-               accessibility: KeychainAccessibility.first_unlock_this_device,
-             ),
-             mOptions: MacOsOptions(
-               accessibility: KeychainAccessibility.first_unlock_this_device,
-             ),
-           ),
-       _prefsFactory = prefsFactory ?? SharedPreferences.getInstance;
+    SecureKvBackend? backend,
+    MasterKeyProvider? masterKeyProvider,
+    EncryptionService? encryptionService,
+  }) : _backend = backend ?? createSecureKvBackend(),
+       _masterKeyProvider =
+           masterKeyProvider ?? DeviceDerivedMasterKeyProvider(),
+       _encryptionService = encryptionService ?? EncryptionService();
 
-  /// Read a value from secure storage.
+  Future<void> _ensureInitialized() async {
+    if (_masterKey != null) return;
+    if (_initializationFuture != null) return _initializationFuture!;
+    final future = _initializeInternal();
+    _initializationFuture = future;
+    try {
+      await future;
+    } finally {
+      _initializationFuture = null;
+    }
+  }
+
+  Future<void> _initializeInternal() async {
+    await _backend.initialize();
+    _masterKey = await _masterKeyProvider.getMasterKey();
+    _initializedSecurely = true;
+  }
+
   @override
   Future<String?> read(String key) async {
-    if (kIsWeb) {
-      return await _readInsecure(key);
-    }
+    await _ensureInitialized();
+    final raw = await _backend.read(key);
+    if (raw == null) return null;
+
     try {
-      return await _secureStorage.read(key: key);
+      final encryptedBlob = EncryptedEnvelopeCodec.decode(raw);
+      final decrypted = await _encryptionService.decrypt(
+        encryptedBlob,
+        _masterKey!,
+        silent: true,
+      );
+      return utf8.decode(decrypted);
     } catch (e) {
-      if (e.toString().contains('-34018')) {
-        debugPrint(
-          '[SecureStorage] Catching Keychain error -34018 for key: $key. Falling back to insecure storage.',
-        );
-        return await _readInsecure(key);
-      }
-      rethrow;
+      throw StateError('Failed to decrypt secure key "$key": $e');
     }
   }
 
-  /// Write a value to secure storage.
   @override
   Future<void> write(String key, String value) async {
-    if (kIsWeb) {
-      await _writeInsecure(key, value);
-      return;
-    }
-    try {
-      await _secureStorage.write(key: key, value: value);
-    } catch (e) {
-      if (e.toString().contains('-34018')) {
-        debugPrint(
-          '[SecureStorage] Catching Keychain error -34018 for key: $key during write. Falling back to insecure storage.',
-        );
-        await _writeInsecure(key, value);
-        return;
-      }
-      rethrow;
-    }
+    await _ensureInitialized();
+    final encrypted = await _encryptionService.encrypt(
+      utf8.encode(value),
+      _masterKey!,
+    );
+    final encoded = EncryptedEnvelopeCodec.encode(encrypted);
+    await _backend.write(key, encoded);
   }
 
-  /// Delete a value from secure storage.
   @override
   Future<void> delete(String key) async {
-    if (kIsWeb) {
-      await _deleteInsecure(key);
-      return;
-    }
-    try {
-      await _secureStorage.delete(key: key);
-    } catch (e) {
-      if (e.toString().contains('-34018')) {
-        await _deleteInsecure(key);
-        return;
-      }
-      rethrow;
-    }
+    await _ensureInitialized();
+    await _backend.delete(key);
   }
 
-  /// Check if a key exists in secure storage.
   @override
   Future<bool> containsKey(String key) async {
-    if (kIsWeb) {
-      return await _containsKeyInsecure(key);
-    }
-    try {
-      return await _secureStorage.containsKey(key: key);
-    } catch (e) {
-      if (e.toString().contains('-34018')) {
-        return await _containsKeyInsecure(key);
-      }
-      rethrow;
-    }
+    await _ensureInitialized();
+    return _backend.containsKey(key);
   }
 
-  /// Delete all values from secure storage.
   @override
   Future<void> deleteAll() async {
-    if (kIsWeb) {
-      await _deleteAllInsecure();
-      return;
-    }
-    try {
-      await _secureStorage.deleteAll();
-    } catch (e) {
-      if (e.toString().contains('-34018')) {
-        await _deleteAllInsecure();
-        return;
-      }
-      rethrow;
-    }
+    await _ensureInitialized();
+    await _backend.deleteAll();
   }
 
-  Future<String?> _readInsecure(String key) async {
-    debugPrint(
-      '[SecureStorage] ⚠️ INSECURE MODE: Using SharedPreferences for key: $key',
-    );
-    final prefs = await _prefsFactory();
-    return prefs.getString('secure_$key');
-  }
-
-  Future<void> _writeInsecure(String key, String value) async {
-    debugPrint(
-      '[SecureStorage] ⚠️ INSECURE MODE: Writing to SharedPreferences for key: $key',
-    );
-    final prefs = await _prefsFactory();
-    await prefs.setString('secure_$key', value);
-  }
-
-  Future<void> _deleteInsecure(String key) async {
-    final prefs = await _prefsFactory();
-    await prefs.remove('secure_$key');
-  }
-
-  Future<bool> _containsKeyInsecure(String key) async {
-    final prefs = await _prefsFactory();
-    return prefs.containsKey('secure_$key');
-  }
-
-  Future<void> _deleteAllInsecure() async {
-    final prefs = await _prefsFactory();
-    final keys = prefs.getKeys().where((k) => k.startsWith('secure_'));
-    for (final key in keys) {
-      await prefs.remove(key);
-    }
-  }
-
-  /// Returns true if running in secure mode (native platforms with functioning Keychain/Keystore).
   @override
-  bool get isSecure => !kIsWeb;
+  bool get isSecure => _initializedSecurely;
 }
