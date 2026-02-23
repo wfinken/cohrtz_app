@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -28,11 +29,27 @@ class ProfileAvatar extends StatelessWidget {
   final bool? isOnline;
   final bool showOnlineIndicator;
 
+  static final LinkedHashMap<String, MemoryImage> _imageCache =
+      LinkedHashMap<String, MemoryImage>();
+  static const int _imageCacheLimit = 120;
+
   ImageProvider<Object>? _resolveImageProvider() {
     final trimmed = avatarBase64.trim();
     if (trimmed.isEmpty) return null;
+
+    final cached = _imageCache.remove(trimmed);
+    if (cached != null) {
+      _imageCache[trimmed] = cached;
+      return cached;
+    }
+
     try {
-      return MemoryImage(base64Decode(trimmed));
+      final decoded = MemoryImage(base64Decode(trimmed));
+      _imageCache[trimmed] = decoded;
+      if (_imageCache.length > _imageCacheLimit) {
+        _imageCache.remove(_imageCache.keys.first);
+      }
+      return decoded;
     } catch (_) {
       return null;
     }

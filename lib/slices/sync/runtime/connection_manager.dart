@@ -900,6 +900,21 @@ class ConnectionManager extends ChangeNotifier {
       if (settings != null) {
         final newName = settings.name;
         if (newName.isNotEmpty) {
+          var resolvedAvatarBase64 = settings.avatarBase64.trim();
+          if (resolvedAvatarBase64.isEmpty &&
+              settings.avatarRef.trim().isNotEmpty) {
+            try {
+              resolvedAvatarBase64 =
+                  await _crdtService.get(
+                    roomName,
+                    settings.avatarRef.trim(),
+                    tableName: 'avatar_blobs',
+                  ) ??
+                  '';
+            } catch (_) {
+              resolvedAvatarBase64 = '';
+            }
+          }
           final currentGroup = _groupManager.findGroup(roomName);
           final currentName = currentGroup['friendlyName'] ?? '';
           final currentAvatar = currentGroup['avatarBase64'] ?? '';
@@ -907,7 +922,7 @@ class ConnectionManager extends ChangeNotifier {
 
           final shouldUpdateMetadata =
               currentName != newName ||
-              currentAvatar != settings.avatarBase64 ||
+              currentAvatar != resolvedAvatarBase64 ||
               currentDescription != settings.description;
 
           if (shouldUpdateMetadata) {
@@ -917,7 +932,7 @@ class ConnectionManager extends ChangeNotifier {
               currentGroup['dataRoomName'] ?? roomName,
               currentGroup['identity'] ?? 'unknown',
               friendlyName: newName,
-              avatarBase64: settings.avatarBase64,
+              avatarBase64: resolvedAvatarBase64,
               description: settings.description,
               isInviteRoom: currentGroup['isInviteRoom'] == 'true',
               isHost: currentGroup['isHost'] == 'true',

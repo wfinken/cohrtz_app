@@ -113,10 +113,15 @@ class HandshakeHandler {
       return null;
     }
 
+    final existingSigning = getPublicKey(roomName, packet.senderId);
+    final existingEncryption = getEncryptionKey(roomName, packet.senderId);
+
     // Store the signing public key
     Log.d('HandshakeHandler', 'Received HANDSHAKE KEY from ${packet.senderId}');
     _knownPublicKeysByRoom.putIfAbsent(roomName, () => {})[packet.senderId] =
         packet.payload;
+
+    var learnedNewKeyMaterial = existingSigning == null;
 
     // Store encryption key if present
     if (packet.hasEncryptionPublicKey()) {
@@ -124,7 +129,13 @@ class HandshakeHandler {
         roomName,
         () => {},
       )[packet.senderId] = packet.encryptionPublicKey;
+      if (existingEncryption == null) {
+        learnedNewKeyMaterial = true;
+      }
       Log.d('HandshakeHandler', 'Stored Encryption Key for ${packet.senderId}');
+    }
+
+    if (learnedNewKeyMaterial) {
       onNewPeer();
     }
 
@@ -153,7 +164,18 @@ class HandshakeHandler {
       return exact;
     }
 
-    return _lookupByCanonicalIdentity(roomKeys, senderId);
+    final canonicalMatch = _lookupByCanonicalIdentity(roomKeys, senderId);
+    if (canonicalMatch != null) {
+      return canonicalMatch;
+    }
+
+    // Identity can briefly diverge during join/reconnect races. When only one
+    // remote key is known, use it as a temporary fallback.
+    if (roomKeys.length == 1) {
+      return roomKeys.values.first;
+    }
+
+    return null;
   }
 
   /// Gets the encryption key for a sender, or null if unknown.

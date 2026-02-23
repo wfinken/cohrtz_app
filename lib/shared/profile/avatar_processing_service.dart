@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:image/image.dart' as img;
@@ -35,6 +36,37 @@ class AvatarDecodeException implements Exception {
 }
 
 class AvatarProcessingService {
+  static Uint8List prepareBytesForCropping(
+    Uint8List inputBytes, {
+    int maxInputPixels = kAvatarCropMaxInputPixels,
+    int reencodeThresholdBytes = kAvatarCropReencodeThresholdBytes,
+    int outputQuality = kAvatarCropOutputJpegQuality,
+  }) {
+    if (inputBytes.isEmpty || inputBytes.length < reencodeThresholdBytes) {
+      return inputBytes;
+    }
+
+    final decoded = img.decodeImage(inputBytes);
+    if (decoded == null) {
+      throw const AvatarDecodeException();
+    }
+
+    final longestEdge = math.max(decoded.width, decoded.height);
+    if (longestEdge <= maxInputPixels) {
+      return inputBytes;
+    }
+
+    final scale = maxInputPixels / longestEdge;
+    final resized = img.copyResize(
+      decoded,
+      width: math.max(1, (decoded.width * scale).round()),
+      height: math.max(1, (decoded.height * scale).round()),
+      interpolation: img.Interpolation.average,
+    );
+
+    return Uint8List.fromList(img.encodeJpg(resized, quality: outputQuality));
+  }
+
   static AvatarProcessResult processAvatarBytes(
     Uint8List inputBytes, {
     int targetPixels = kAvatarTargetPixels,

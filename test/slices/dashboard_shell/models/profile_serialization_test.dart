@@ -10,6 +10,7 @@ void main() {
       );
 
       expect(profile.avatarBase64, isEmpty);
+      expect(profile.avatarRef, isEmpty);
       expect(profile.bio, isEmpty);
     });
 
@@ -22,6 +23,7 @@ void main() {
 
         expect(settings.description, isEmpty);
         expect(settings.avatarBase64, isEmpty);
+        expect(settings.avatarRef, isEmpty);
         expect(settings.name, 'My Group');
       },
     );

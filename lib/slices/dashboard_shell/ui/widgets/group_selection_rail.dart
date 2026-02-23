@@ -112,12 +112,7 @@ class _GroupSelectionRailState extends ConsumerState<GroupSelectionRail> {
               Builder(
                 builder: (context) {
                   final hasGroups = knownGroups.isNotEmpty;
-                  final isConnected =
-                      currentRoomName != null &&
-                      ref
-                          .read(syncServiceProvider)
-                          .isGroupConnected(currentRoomName);
-                  final canOpenDrawer = hasGroups && isConnected;
+                  final canOpenDrawer = hasGroups;
 
                   return Padding(
                     padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
@@ -138,7 +133,7 @@ class _GroupSelectionRailState extends ConsumerState<GroupSelectionRail> {
                             : null,
                         tooltip: canOpenDrawer
                             ? 'Expand drawer'
-                            : 'Connect to a group first',
+                            : 'Join a group first',
                       ),
                     ),
                   );

@@ -133,6 +133,7 @@ class GroupSettings with GroupSettingsMappable {
   final String name;
   final String description;
   final String avatarBase64;
+  final String avatarRef;
   final DateTime createdAt;
   final int logicalTime;
   final GroupType groupType;
@@ -146,6 +147,7 @@ class GroupSettings with GroupSettingsMappable {
     required this.name,
     this.description = '',
     this.avatarBase64 = '',
+    this.avatarRef = '',
     required this.createdAt,
     this.logicalTime = 0,
     this.groupType = GroupType.family,

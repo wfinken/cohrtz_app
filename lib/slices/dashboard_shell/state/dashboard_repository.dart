@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/di/app_providers.dart';
@@ -146,12 +147,15 @@ class _DashboardChatRepositoryAdapter implements IChatRepository {
 }
 
 class DashboardRepository {
+  static const String _avatarBlobTableName = 'avatar_blobs';
+
   final CrdtService _crdtService;
   final String? _roomName;
   late final TaskRepository _taskRepository;
   late final CalendarRepository _calendarRepository;
   late final VaultRepository _vaultRepository;
   late final ChatRepository _chatRepository;
+  final Map<String, String> _avatarBase64Cache = <String, String>{};
 
   DashboardRepository(
     this._crdtService,
@@ -225,6 +229,168 @@ class DashboardRepository {
     peerUserId: peerUserId,
   );
 
+  String _avatarRefFromBase64(String base64Data) {
+    try {
+      final bytes = base64Decode(base64Data);
+      return sha256.convert(bytes).toString();
+    } catch (_) {
+      return sha256.convert(utf8.encode(base64Data)).toString();
+    }
+  }
+
+  Future<String> _persistAvatarBlob(
+    String base64Data, {
+    String? preferredRef,
+  }) async {
+    final trimmed = base64Data.trim();
+    if (trimmed.isEmpty) return '';
+
+    final ref = (preferredRef?.trim().isNotEmpty ?? false)
+        ? preferredRef!.trim()
+        : _avatarRefFromBase64(trimmed);
+    _avatarBase64Cache[ref] = trimmed;
+
+    final roomName = _roomName;
+    if (roomName != null) {
+      try {
+        final existing = await _crdtService.get(
+          roomName,
+          ref,
+          tableName: _avatarBlobTableName,
+        );
+        if (existing == null || existing.isEmpty) {
+          await _crdtService.put(
+            roomName,
+            ref,
+            trimmed,
+            tableName: _avatarBlobTableName,
+          );
+        }
+      } catch (e) {
+        Log.w(
+          '[DashboardRepository]',
+          'Avatar blob sync table unavailable, continuing with inline metadata fallback: $e',
+        );
+      }
+    }
+
+    return ref;
+  }
+
+  Future<String> _readAvatarBlob(String ref) async {
+    final normalizedRef = ref.trim();
+    if (normalizedRef.isEmpty) return '';
+
+    final cached = _avatarBase64Cache[normalizedRef];
+    if (cached != null && cached.isNotEmpty) {
+      return cached;
+    }
+
+    final roomName = _roomName;
+    if (roomName == null) return '';
+
+    String? remote;
+    try {
+      remote = await _crdtService.get(
+        roomName,
+        normalizedRef,
+        tableName: _avatarBlobTableName,
+      );
+    } catch (e) {
+      Log.w(
+        '[DashboardRepository]',
+        'Avatar blob sync lookup failed, skipping ref hydration: $e',
+      );
+      return '';
+    }
+    if (remote == null || remote.trim().isEmpty) {
+      return '';
+    }
+
+    final trimmed = remote.trim();
+    _avatarBase64Cache[normalizedRef] = trimmed;
+    return trimmed;
+  }
+
+  Future<UserProfile> _hydrateUserProfileAvatar(UserProfile profile) async {
+    final avatarBase64 = profile.avatarBase64.trim();
+    var avatarRef = profile.avatarRef.trim();
+    if (avatarBase64.isNotEmpty) {
+      if (avatarRef.isEmpty) {
+        avatarRef = await _persistAvatarBlob(avatarBase64);
+      } else {
+        _avatarBase64Cache[avatarRef] = avatarBase64;
+      }
+      return profile.copyWith(avatarRef: avatarRef);
+    }
+    if (avatarRef.isEmpty) return profile;
+    final resolvedBase64 = await _readAvatarBlob(avatarRef);
+    if (resolvedBase64.isEmpty) return profile;
+    return profile.copyWith(avatarBase64: resolvedBase64);
+  }
+
+  Future<UserProfile> _prepareUserProfileForStorage(UserProfile profile) async {
+    final avatarBase64 = profile.avatarBase64.trim();
+    var avatarRef = profile.avatarRef.trim();
+    if (avatarBase64.isNotEmpty) {
+      avatarRef = await _persistAvatarBlob(
+        avatarBase64,
+        preferredRef: avatarRef.isEmpty ? null : avatarRef,
+      );
+    }
+    return profile.copyWith(avatarBase64: '', avatarRef: avatarRef);
+  }
+
+  Future<GroupSettings> _hydrateGroupSettingsAvatar(
+    GroupSettings settings,
+  ) async {
+    final avatarBase64 = settings.avatarBase64.trim();
+    var avatarRef = settings.avatarRef.trim();
+    if (avatarBase64.isNotEmpty) {
+      if (avatarRef.isEmpty) {
+        avatarRef = await _persistAvatarBlob(avatarBase64);
+      } else {
+        _avatarBase64Cache[avatarRef] = avatarBase64;
+      }
+      return settings.copyWith(avatarRef: avatarRef);
+    }
+    if (avatarRef.isEmpty) return settings;
+    final resolvedBase64 = await _readAvatarBlob(avatarRef);
+    if (resolvedBase64.isEmpty) return settings;
+    return settings.copyWith(avatarBase64: resolvedBase64);
+  }
+
+  Future<GroupSettings> _prepareGroupSettingsForStorage(
+    GroupSettings settings,
+  ) async {
+    final avatarBase64 = settings.avatarBase64.trim();
+    var avatarRef = settings.avatarRef.trim();
+    if (avatarBase64.isNotEmpty) {
+      avatarRef = await _persistAvatarBlob(
+        avatarBase64,
+        preferredRef: avatarRef.isEmpty ? null : avatarRef,
+      );
+    }
+    return settings.copyWith(avatarBase64: '', avatarRef: avatarRef);
+  }
+
+  UserProfile? _parseUserProfileValue(String value) {
+    if (value.isEmpty) return null;
+    try {
+      return UserProfileMapper.fromJson(value);
+    } catch (_) {
+      try {
+        final unwrapped = jsonDecode(value);
+        if (unwrapped is String) {
+          return UserProfileMapper.fromJson(unwrapped);
+        }
+      } catch (e) {
+        Log.e('[DashboardRepository]', 'Error decoding UserProfile', e);
+      }
+      return null;
+    }
+  }
+
   Stream<List<UserProfile>> watchUserProfiles() {
     final db = _db;
     final roomName = _roomName;
@@ -235,70 +401,46 @@ class DashboardRepository {
             roomName,
             'SELECT value FROM user_profiles WHERE is_deleted = 0',
           )
-          .map((rows) {
+          .asyncMap((rows) async {
             final profiles = rows
                 .map((row) {
                   final value = row['value'] as String? ?? '';
-                  if (value.isEmpty) return null;
-                  try {
-                    return UserProfileMapper.fromJson(value);
-                  } catch (_) {
-                    try {
-                      final unwrapped = jsonDecode(value);
-                      if (unwrapped is String) {
-                        return UserProfileMapper.fromJson(unwrapped);
-                      }
-                    } catch (e) {
-                      Log.e(
-                        '[DashboardRepository]',
-                        'Error decoding UserProfile',
-                        e,
-                      );
-                    }
-                    return null;
-                  }
+                  return _parseUserProfileValue(value);
                 })
                 .whereType<UserProfile>()
                 .toList();
-            return profiles;
+            final hydrated = await Future.wait(
+              profiles.map(_hydrateUserProfileAvatar),
+            );
+            return hydrated;
           });
     }
     return (db.select(
       db.userProfiles,
-    )..where((t) => t.isDeleted.equals(0))).watch().map((rows) {
+    )..where((t) => t.isDeleted.equals(0))).watch().asyncMap((rows) async {
       final profiles = rows
           .map((row) {
-            try {
-              final jsonStr = row.value;
-              return UserProfileMapper.fromJson(jsonStr);
-            } catch (_) {
-              // Handle legacy double-encoded values
-              try {
-                final unwrapped = jsonDecode(row.value);
-                if (unwrapped is String) {
-                  return UserProfileMapper.fromJson(unwrapped);
-                }
-              } catch (e) {
-                Log.e('[DashboardRepository]', 'Error decoding UserProfile', e);
-              }
-              return null;
-            }
+            return _parseUserProfileValue(row.value);
           })
           .whereType<UserProfile>()
           .toList();
-      return profiles;
+      final hydrated = await Future.wait(
+        profiles.map(_hydrateUserProfileAvatar),
+      );
+      return hydrated;
     });
   }
 
   Future<void> saveUserProfile(UserProfile profile) async {
     final db = _db;
     final roomName = _roomName;
+    final profileToStore = await _prepareUserProfileForStorage(profile);
     if (db == null) {
       if (roomName == null) return;
       await _crdtService.put(
         roomName,
-        profile.id,
-        jsonEncode(profile.toMap()),
+        profileToStore.id,
+        jsonEncode(profileToStore.toMap()),
         tableName: 'user_profiles',
       );
       return;
@@ -307,8 +449,8 @@ class DashboardRepository {
         .into(db.userProfiles)
         .insertOnConflictUpdate(
           UserProfileEntity(
-            id: profile.id,
-            value: jsonEncode(profile.toMap()),
+            id: profileToStore.id,
+            value: jsonEncode(profileToStore.toMap()),
             isDeleted: 0,
           ),
         );
@@ -409,7 +551,7 @@ class DashboardRepository {
             roomName,
             'SELECT id, value FROM group_settings WHERE is_deleted = 0',
           )
-          .map((rows) {
+          .asyncMap((rows) async {
             if (rows.isEmpty) return null;
             final canonical = rows.firstWhere(
               (r) => (r['id'] as String?) == 'group_settings',
@@ -418,7 +560,8 @@ class DashboardRepository {
             final jsonStr = canonical['value'] as String? ?? '';
             if (jsonStr.isEmpty) return null;
             try {
-              return GroupSettingsMapper.fromJson(jsonStr);
+              final parsed = GroupSettingsMapper.fromJson(jsonStr);
+              return await _hydrateGroupSettingsAvatar(parsed);
             } catch (e) {
               Log.e('[DashboardRepository]', 'Error decoding GroupSettings', e);
               return null;
@@ -477,7 +620,7 @@ class DashboardRepository {
 
         if (targetSettings != null) {
           await saveGroupSettings(targetSettings);
-          return targetSettings;
+          return await _hydrateGroupSettingsAvatar(targetSettings);
         }
       }
 
@@ -487,7 +630,8 @@ class DashboardRepository {
       );
       final jsonStr = record.value;
       try {
-        return GroupSettingsMapper.fromJson(jsonStr);
+        final parsed = GroupSettingsMapper.fromJson(jsonStr);
+        return await _hydrateGroupSettingsAvatar(parsed);
       } catch (e) {
         Log.e('[DashboardRepository]', 'Error decoding GroupSettings', e);
         return null;
@@ -501,12 +645,13 @@ class DashboardRepository {
     final safeSettings = settings.id != 'group_settings'
         ? settings.copyWith(id: 'group_settings')
         : settings;
+    final settingsToStore = await _prepareGroupSettingsForStorage(safeSettings);
     if (db == null) {
       if (roomName == null) return;
       await _crdtService.put(
         roomName,
-        safeSettings.id,
-        jsonEncode(safeSettings.toMap()),
+        settingsToStore.id,
+        jsonEncode(settingsToStore.toMap()),
         tableName: 'group_settings',
       );
       return;
@@ -516,8 +661,8 @@ class DashboardRepository {
         .into(db.groupSettingsTable)
         .insertOnConflictUpdate(
           GroupSettingsEntity(
-            id: safeSettings.id,
-            value: jsonEncode(safeSettings.toMap()),
+            id: settingsToStore.id,
+            value: jsonEncode(settingsToStore.toMap()),
             isDeleted: 0,
           ),
         );
