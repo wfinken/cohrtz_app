@@ -4,8 +4,8 @@ import 'dart:math';
 import 'package:cryptography/cryptography.dart';
 
 import 'package:flutter/foundation.dart';
-import 'package:uuid/uuid.dart';
 import 'package:sql_crdt/sql_crdt.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../shared/utils/logging_service.dart';
 import '../../../shared/utils/sync_diagnostics.dart';
@@ -14,6 +14,7 @@ import 'package:cohortz/slices/permissions_core/permission_flags.dart';
 import 'package:cohortz/slices/permissions_core/permission_service.dart';
 import 'package:cohortz/src/generated/p2p_packet.pb.dart';
 import '../runtime/crdt_service.dart';
+import '../runtime/hlc_compat.dart';
 
 /// Handles CRDT sync protocol operations.
 ///
@@ -37,6 +38,7 @@ class SyncProtocol {
   final _reliabilityScore = 1.0;
   final _random = Random();
   final Map<String, DateTime> _lastSyncRequest = {};
+  final Map<String, DateTime> _lastConsistencyCheck = {};
 
   SyncProtocol({
     required CrdtService crdtService,
@@ -264,11 +266,10 @@ class SyncProtocol {
         final parsedRecords = records.map((r) {
           final newRecord = Map<String, dynamic>.from(r);
           if (newRecord.containsKey('hlc') && newRecord['hlc'] is String) {
-            newRecord['hlc'] = Hlc.parse(newRecord['hlc']);
-          }
-          if (newRecord.containsKey('modified') &&
-              newRecord['modified'] is String) {
-            newRecord['modified'] = Hlc.parse(newRecord['modified']);
+            final parsed = tryParseHlcCompat(newRecord['hlc'] as String);
+            if (parsed != null) {
+              newRecord['hlc'] = parsed;
+            }
           }
           return newRecord;
         }).toList();
@@ -318,6 +319,13 @@ class SyncProtocol {
   /// Broadcasts a consistency check to verify sync integrity.
   Future<void> broadcastConsistencyCheck(String roomName) async {
     try {
+      final now = DateTime.now();
+      final last = _lastConsistencyCheck[roomName];
+      if (last != null && now.difference(last) < const Duration(seconds: 2)) {
+        return;
+      }
+      _lastConsistencyCheck[roomName] = now;
+
       final diag = await _crdtService.getDiagnostics(roomName);
       final payload = utf8.encode(jsonEncode(diag));
 

@@ -18,7 +18,30 @@ class VaultRepository extends RoomRepositoryBase implements IVaultRepository {
   @override
   Stream<List<VaultItem>> watchVaultItems() {
     final activeDb = db;
-    if (activeDb == null) return Stream.value([]);
+    final activeRoom = roomName;
+    if (activeDb == null) {
+      if (activeRoom == null) return Stream.value([]);
+      return crdtService
+          .watch(
+            activeRoom,
+            'SELECT value FROM vault_items WHERE is_deleted = 0',
+          )
+          .map((rows) {
+            return rows
+                .map((row) {
+                  final value = row['value'] as String? ?? '';
+                  if (value.isEmpty) return null;
+                  try {
+                    return VaultItemMapper.fromJson(value);
+                  } catch (e) {
+                    Log.e('[VaultRepository]', 'Error decoding VaultItem', e);
+                    return null;
+                  }
+                })
+                .whereType<VaultItem>()
+                .toList();
+          });
+    }
     return (activeDb.select(
       activeDb.vaultItems,
     )..where((t) => t.isDeleted.equals(0))).watch().map((rows) {
@@ -39,7 +62,17 @@ class VaultRepository extends RoomRepositoryBase implements IVaultRepository {
   @override
   Future<void> saveVaultItem(VaultItem item) async {
     final activeDb = db;
-    if (activeDb == null) return;
+    final activeRoom = roomName;
+    if (activeDb == null) {
+      if (activeRoom == null) return;
+      await crdtService.put(
+        activeRoom,
+        item.id,
+        jsonEncode(item.toMap()),
+        tableName: 'vault_items',
+      );
+      return;
+    }
     await activeDb
         .into(activeDb.vaultItems)
         .insertOnConflictUpdate(

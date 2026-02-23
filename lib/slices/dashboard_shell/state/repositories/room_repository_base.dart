@@ -12,8 +12,7 @@ abstract class RoomRepositoryBase {
 
   Future<void> crdtDelete(String id, String tableName) async {
     final activeRoom = roomName;
-    final activeDb = db;
-    if (activeDb == null || activeRoom == null) return;
+    if (activeRoom == null) return;
     await crdtService.delete(activeRoom, id, tableName);
   }
 }

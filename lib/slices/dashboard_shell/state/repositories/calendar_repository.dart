@@ -19,7 +19,34 @@ class CalendarRepository extends RoomRepositoryBase
   @override
   Stream<List<CalendarEvent>> watchEvents() {
     final activeDb = db;
-    if (activeDb == null) return Stream.value([]);
+    final activeRoom = roomName;
+    if (activeDb == null) {
+      if (activeRoom == null) return Stream.value([]);
+      return crdtService
+          .watch(
+            activeRoom,
+            'SELECT value FROM calendar_events WHERE is_deleted = 0',
+          )
+          .map((rows) {
+            return rows
+                .map((row) {
+                  final value = row['value'] as String? ?? '';
+                  if (value.isEmpty) return null;
+                  try {
+                    return CalendarEventMapper.fromJson(value);
+                  } catch (e) {
+                    Log.e(
+                      '[CalendarRepository]',
+                      'Error decoding CalendarEvent',
+                      e,
+                    );
+                    return null;
+                  }
+                })
+                .whereType<CalendarEvent>()
+                .toList();
+          });
+    }
     return (activeDb.select(
       activeDb.calendarEvents,
     )..where((t) => t.isDeleted.equals(0))).watch().map((rows) {
@@ -40,7 +67,17 @@ class CalendarRepository extends RoomRepositoryBase
   @override
   Future<void> saveEvent(CalendarEvent event) async {
     final activeDb = db;
-    if (activeDb == null) return;
+    final activeRoom = roomName;
+    if (activeDb == null) {
+      if (activeRoom == null) return;
+      await crdtService.put(
+        activeRoom,
+        event.id,
+        jsonEncode(event.toMap()),
+        tableName: 'calendar_events',
+      );
+      return;
+    }
     await activeDb
         .into(activeDb.calendarEvents)
         .insertOnConflictUpdate(

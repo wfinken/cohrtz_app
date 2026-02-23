@@ -230,6 +230,11 @@ class InviteJoinProcess implements SyncProcess {
           _hybridTimeService,
         );
         await dataRoomRepo.saveUserProfile(dataRoomProfile);
+        await _reconcileMemberIdentityAfterJoin(
+          roomName: e.dataRoomUUID,
+          inviteIdentity: profile.id,
+          dataRoomIdentity: dataRoomProfile.id,
+        );
 
         _onStepUpdate(3, StepStatus.completed);
         return;
@@ -245,5 +250,65 @@ class InviteJoinProcess implements SyncProcess {
     throw UnimplementedError(
       'Use executeCreate/executeJoin for invite orchestration.',
     );
+  }
+
+  Future<void> _reconcileMemberIdentityAfterJoin({
+    required String roomName,
+    required String inviteIdentity,
+    required String dataRoomIdentity,
+  }) async {
+    if (inviteIdentity.isEmpty ||
+        dataRoomIdentity.isEmpty ||
+        inviteIdentity == dataRoomIdentity) {
+      return;
+    }
+
+    try {
+      final currentRows = await _crdtService.query(
+        roomName,
+        'SELECT value FROM members WHERE id = ?',
+        [dataRoomIdentity],
+      );
+      final currentValue = currentRows.isNotEmpty
+          ? (currentRows.first['value'] as String? ?? '')
+          : '';
+      final hasCurrentMember = currentValue.isNotEmpty;
+      if (hasCurrentMember) return;
+
+      final legacyRows = await _crdtService.query(
+        roomName,
+        'SELECT value FROM members WHERE id = ?',
+        [inviteIdentity],
+      );
+      if (legacyRows.isEmpty) return;
+
+      final legacyValue = legacyRows.first['value'] as String? ?? '';
+      if (legacyValue.isEmpty) return;
+
+      final legacyMember = GroupMemberMapper.fromJson(legacyValue);
+      if (legacyMember.roleIds.isEmpty) return;
+
+      final mappedMember = GroupMember(
+        id: dataRoomIdentity,
+        roleIds: legacyMember.roleIds,
+      );
+
+      await _crdtService.put(
+        roomName,
+        dataRoomIdentity,
+        jsonEncode(mappedMember.toMap()),
+        tableName: 'members',
+      );
+
+      Log.i(
+        'InviteJoinProcess',
+        'Mapped invite identity $inviteIdentity roles to $dataRoomIdentity in $roomName.',
+      );
+    } catch (e) {
+      Log.w(
+        'InviteJoinProcess',
+        'Failed to reconcile member identity for $dataRoomIdentity in $roomName: $e',
+      );
+    }
   }
 }

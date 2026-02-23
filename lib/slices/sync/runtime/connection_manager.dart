@@ -9,6 +9,7 @@ import '../../../shared/security/secure_storage_service.dart';
 import '../../../shared/utils/jwt_utils.dart';
 import '../../../shared/utils/logging_service.dart';
 import 'crdt_service.dart';
+import 'hlc_compat.dart';
 import 'group_manager.dart';
 
 import 'package:http/http.dart' as http;
@@ -487,8 +488,11 @@ class ConnectionManager extends ChangeNotifier {
       // Initialize Sync Dependencies (CRDT / TreeKEM)
       if (syncData) {
         final localIdentity = resolveLocalParticipantIdForRoom(roomName);
-        await _crdtService.initialize(
+        final crdtNodeId = sanitizeCrdtNodeId(
           localIdentity.isNotEmpty ? localIdentity : _nodeId,
+        );
+        await _crdtService.initialize(
+          crdtNodeId,
           roomName,
           databaseName: dataRoomName,
         );

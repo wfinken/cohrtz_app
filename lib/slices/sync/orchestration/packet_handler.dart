@@ -4,7 +4,6 @@ import 'dart:convert';
 import 'package:uuid/uuid.dart';
 import 'package:cryptography/cryptography.dart';
 import 'package:cohortz/src/generated/p2p_packet.pb.dart';
-import 'package:sql_crdt/sql_crdt.dart'; // For Hlc
 
 import '../../../shared/utils/logging_service.dart';
 import '../../../shared/utils/sync_diagnostics.dart';
@@ -14,6 +13,7 @@ import '../../vault/state/packet_store.dart';
 import '../../vault/models/stored_packet.dart';
 import '../runtime/crdt_service.dart';
 import '../runtime/group_manager.dart';
+import '../runtime/hlc_compat.dart';
 import '../runtime/hybrid_time_service.dart';
 import 'handshake_handler.dart';
 import 'invite_handler.dart';
@@ -198,6 +198,26 @@ class PacketHandler {
           'Handshake contained TreeKEM key from ${packet.senderId}. Initiating onboarding.',
         );
         await _attemptOnboard(roomName, packet.senderId, newTreeKemKey);
+      }
+    }
+
+    final senderPubKey = _handshakeHandler.getPublicKey(
+      roomName,
+      packet.senderId,
+    );
+    if (senderPubKey != null) {
+      final pending = _handshakeHandler.clearPendingPackets(
+        roomName,
+        packet.senderId,
+      );
+      if (pending.isNotEmpty) {
+        Log.i(
+          'PacketHandler',
+          'Replaying ${pending.length} buffered packets from ${packet.senderId} in $roomName after handshake.',
+        );
+        for (final bufferedPacket in pending) {
+          await _processVerifiedPacket(roomName, bufferedPacket, senderPubKey);
+        }
       }
     }
     return true;
@@ -578,13 +598,11 @@ class PacketHandler {
         final records = (value as List).cast<Map<String, dynamic>>();
         final parsedRecords = records.map((r) {
           final newRecord = Map<String, dynamic>.from(r);
-          // Handle HLC parsing
           if (newRecord.containsKey('hlc') && newRecord['hlc'] is String) {
-            newRecord['hlc'] = Hlc.parse(newRecord['hlc']);
-          }
-          if (newRecord.containsKey('modified') &&
-              newRecord['modified'] is String) {
-            newRecord['modified'] = Hlc.parse(newRecord['modified']);
+            final parsed = tryParseHlcCompat(newRecord['hlc'] as String);
+            if (parsed != null) {
+              newRecord['hlc'] = parsed;
+            }
           }
           return newRecord;
         }).toList();
