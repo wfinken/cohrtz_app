@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:cohortz/shared/security/security_service.dart';
 import 'package:cohortz/shared/security/encryption_service.dart';
+import 'package:cohortz/shared/security/secure_storage_service.dart';
 import 'package:cohortz/src/generated/p2p_packet.pb.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -14,7 +14,7 @@ void main() {
     setUp(() async {
       // Mock SharedPreferences
       SharedPreferences.setMockInitialValues({});
-      FlutterSecureStorage.setMockInitialValues({});
+      await SecureStorageService().deleteAll();
 
       securityService = SecurityService();
       await securityService.initialize();

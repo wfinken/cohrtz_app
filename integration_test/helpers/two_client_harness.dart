@@ -17,7 +17,6 @@ import 'package:cohortz/slices/permissions_feature/state/role_repository.dart';
 import 'package:cohortz/slices/sync/orchestration/sync_service.dart';
 import 'package:cohortz/slices/sync/runtime/crdt_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -61,7 +60,6 @@ class TwoClientHarness {
 
   static Future<TwoClientHarness> start(E2eEnvConfig config) async {
     SharedPreferences.setMockInitialValues({});
-    FlutterSecureStorage.setMockInitialValues({});
 
     final clientA = await _createClient(
       label: 'clientA',
