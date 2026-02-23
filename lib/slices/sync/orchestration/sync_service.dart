@@ -3,6 +3,8 @@ import 'package:flutter/widgets.dart' hide ConnectionState;
 import 'package:livekit_client/livekit_client.dart';
 import 'package:cohortz/shared/config/app_config.dart';
 import 'package:cryptography/cryptography.dart';
+import 'package:cohortz/slices/sync/contracts/group_descriptor.dart';
+import 'package:cohortz/slices/sync/contracts/sync_service_contract.dart';
 
 import '../runtime/connection_manager.dart';
 import '../runtime/group_manager.dart';
@@ -38,7 +40,9 @@ class GroupExistsException implements Exception {
 
 /// The main entry point for sync functionality, refactored to delegate logic
 /// to specialized managers while maintaining the existing public API for the UI.
-class SyncService extends ChangeNotifier with WidgetsBindingObserver {
+class SyncService extends ChangeNotifier
+    with WidgetsBindingObserver
+    implements ISyncService {
   final ConnectionManager _connectionManager;
   final GroupManager _groupManager;
   final KeyManager _keyManager;
@@ -46,18 +50,25 @@ class SyncService extends ChangeNotifier with WidgetsBindingObserver {
   final NetworkRecoveryProcess _networkRecoveryProcess;
 
   // Expose internal state for UI to consume
+  @override
   String? get activeRoomName => _connectionManager.activeRoomName;
+  @override
   String? get currentRoomName => _connectionManager.activeRoomName;
   String? get localParticipantId => _connectionManager.localParticipantId;
+  @override
   String? get identity => _connectionManager.localParticipantId; // Alias
   String? getLocalParticipantIdForRoom(String roomName) =>
       _connectionManager.getLocalParticipantIdForRoom(roomName);
 
+  @override
   bool get isActiveRoomConnected => _connectionManager.isActiveRoomConnected();
+  @override
   bool get isActiveRoomConnecting =>
       _connectionManager.isActiveRoomConnecting();
+  @override
   bool get isConnected => _connectionManager.isAnyRoomConnected;
 
+  @override
   Map<String, RemoteParticipant> get remoteParticipants {
     final room = activeRoomName;
     if (room == null) return {};
@@ -98,6 +109,7 @@ class SyncService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  @override
   Future<void> connect(
     String token,
     String roomName, {
@@ -172,12 +184,15 @@ class SyncService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  @override
   Future<void> connectAllKnownGroups() async {
     await _networkRecoveryProcess.restore();
   }
 
+  @override
   Future<void> disconnect() => _connectionManager.disconnectAll();
 
+  @override
   Future<void> joinInviteRoom(
     String token,
     String groupName, {
@@ -190,30 +205,51 @@ class SyncService extends ChangeNotifier with WidgetsBindingObserver {
     setActive: setActive,
   );
 
+  @override
   Future<List<Map<String, String?>>> getKnownGroups() async =>
       _groupManager.getKnownGroups();
 
+  @override
   List<Map<String, String?>> get knownGroups => _groupManager.knownGroups;
+  @override
   List<Map<String, String?>> get knownInviteGroups =>
       _groupManager.knownInviteGroups;
+  @override
   List<Map<String, String?>> get allKnownGroups => _groupManager.allKnownGroups;
+  @override
+  List<GroupDescriptor> get knownGroupDescriptors =>
+      _groupManager.knownGroupDescriptors;
+  @override
+  List<GroupDescriptor> get knownInviteGroupDescriptors =>
+      _groupManager.knownInviteGroupDescriptors;
+  @override
+  List<GroupDescriptor> get allKnownGroupDescriptors =>
+      _groupManager.allKnownGroupDescriptors;
 
   Future<bool> get hasSavedGroup => _groupManager.hasSavedGroup;
+
+  @override
+  Future<KnownGroupsSnapshot> getKnownGroupsSnapshot() =>
+      _groupManager.getKnownGroupsSnapshot();
 
   Future<Map<String, String?>?> getSavedConnectionDetails() =>
       _groupManager.getSavedConnectionDetails(AppConfig.livekitUrl);
 
+  @override
   String getFriendlyName(String? roomName) =>
       _groupManager.getFriendlyName(roomName);
 
+  @override
   Future<void> forgetGroup(String roomName) async {
     await _connectionManager.disconnectRoom(roomName);
     await _groupManager.forgetGroup(roomName);
   }
 
+  @override
   bool isGroupConnected(String roomName) =>
       _connectionManager.isConnected(roomName);
 
+  @override
   void setActiveRoom(String roomName) =>
       _connectionManager.setActiveRoom(roomName);
 
@@ -228,6 +264,7 @@ class SyncService extends ChangeNotifier with WidgetsBindingObserver {
     return {};
   }
 
+  @override
   Future<SecretKey> getVaultKey(
     String roomName, {
     bool allowGenerateIfMissing = false,

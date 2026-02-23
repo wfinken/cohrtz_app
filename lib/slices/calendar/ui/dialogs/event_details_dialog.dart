@@ -369,7 +369,7 @@ class EventDetailsDialog extends ConsumerWidget {
     updatedAttendees[myId] = status;
 
     final updatedEvent = event.copyWith(attendees: updatedAttendees);
-    ref.read(dashboardRepositoryProvider).saveEvent(updatedEvent);
+    ref.read(calendarRepositoryProvider).saveEvent(updatedEvent);
   }
 
   Future<void> _confirmDelete(
@@ -409,7 +409,7 @@ class EventDetailsDialog extends ConsumerWidget {
       return;
     }
 
-    await ref.read(dashboardRepositoryProvider).deleteEvent(event.id);
+    await ref.read(calendarRepositoryProvider).deleteEvent(event.id);
 
     if (!context.mounted) {
       return;

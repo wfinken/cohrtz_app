@@ -2,27 +2,41 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+abstract class ISecureStore {
+  Future<String?> read(String key);
+  Future<void> write(String key, String value);
+  Future<void> delete(String key);
+  Future<bool> containsKey(String key);
+  Future<void> deleteAll();
+  bool get isSecure;
+}
+
 /// Platform-aware secure storage service.
 /// Uses FlutterSecureStorage on native platforms, falls back to SharedPreferences on web.
 ///
 /// WARNING: Web storage is NOT secure and should only be used for development.
-class SecureStorageService {
-  static final SecureStorageService _instance =
-      SecureStorageService._internal();
-  factory SecureStorageService() => _instance;
-  SecureStorageService._internal();
+class SecureStorageService implements ISecureStore {
+  final FlutterSecureStorage _secureStorage;
+  final Future<SharedPreferences> Function() _prefsFactory;
 
-  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-    iOptions: IOSOptions(
-      accessibility: KeychainAccessibility.first_unlock_this_device,
-    ),
-    mOptions: MacOsOptions(
-      accessibility: KeychainAccessibility.first_unlock_this_device,
-    ),
-  );
+  SecureStorageService({
+    FlutterSecureStorage? secureStorage,
+    Future<SharedPreferences> Function()? prefsFactory,
+  }) : _secureStorage =
+           secureStorage ??
+           const FlutterSecureStorage(
+             aOptions: AndroidOptions(encryptedSharedPreferences: true),
+             iOptions: IOSOptions(
+               accessibility: KeychainAccessibility.first_unlock_this_device,
+             ),
+             mOptions: MacOsOptions(
+               accessibility: KeychainAccessibility.first_unlock_this_device,
+             ),
+           ),
+       _prefsFactory = prefsFactory ?? SharedPreferences.getInstance;
 
   /// Read a value from secure storage.
+  @override
   Future<String?> read(String key) async {
     if (kIsWeb) {
       return await _readInsecure(key);
@@ -41,6 +55,7 @@ class SecureStorageService {
   }
 
   /// Write a value to secure storage.
+  @override
   Future<void> write(String key, String value) async {
     if (kIsWeb) {
       await _writeInsecure(key, value);
@@ -61,6 +76,7 @@ class SecureStorageService {
   }
 
   /// Delete a value from secure storage.
+  @override
   Future<void> delete(String key) async {
     if (kIsWeb) {
       await _deleteInsecure(key);
@@ -78,6 +94,7 @@ class SecureStorageService {
   }
 
   /// Check if a key exists in secure storage.
+  @override
   Future<bool> containsKey(String key) async {
     if (kIsWeb) {
       return await _containsKeyInsecure(key);
@@ -93,6 +110,7 @@ class SecureStorageService {
   }
 
   /// Delete all values from secure storage.
+  @override
   Future<void> deleteAll() async {
     if (kIsWeb) {
       await _deleteAllInsecure();
@@ -113,7 +131,7 @@ class SecureStorageService {
     debugPrint(
       '[SecureStorage] ⚠️ INSECURE MODE: Using SharedPreferences for key: $key',
     );
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _prefsFactory();
     return prefs.getString('secure_$key');
   }
 
@@ -121,22 +139,22 @@ class SecureStorageService {
     debugPrint(
       '[SecureStorage] ⚠️ INSECURE MODE: Writing to SharedPreferences for key: $key',
     );
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _prefsFactory();
     await prefs.setString('secure_$key', value);
   }
 
   Future<void> _deleteInsecure(String key) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _prefsFactory();
     await prefs.remove('secure_$key');
   }
 
   Future<bool> _containsKeyInsecure(String key) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _prefsFactory();
     return prefs.containsKey('secure_$key');
   }
 
   Future<void> _deleteAllInsecure() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _prefsFactory();
     final keys = prefs.getKeys().where((k) => k.startsWith('secure_'));
     for (final key in keys) {
       await prefs.remove(key);
@@ -144,5 +162,6 @@ class SecureStorageService {
   }
 
   /// Returns true if running in secure mode (native platforms with functioning Keychain/Keystore).
+  @override
   bool get isSecure => !kIsWeb;
 }

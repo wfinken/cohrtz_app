@@ -768,7 +768,7 @@ class _AddEventDialogContentState
           visibilityGroupIds: normalizeVisibilityGroupIds(_visibilityGroupIds),
         );
 
-    await ref.read(dashboardRepositoryProvider).saveEvent(event);
+    await ref.read(calendarRepositoryProvider).saveEvent(event);
     if (mounted) {
       Navigator.pop(context);
     }

@@ -299,7 +299,7 @@ class CalendarWidget extends ConsumerWidget {
 }
 
 final eventsStreamProvider = StreamProvider<List<CalendarEvent>>((ref) {
-  final repo = ref.watch(dashboardRepositoryProvider);
+  final repo = ref.watch(calendarRepositoryProvider);
   final myGroupIds = ref.watch(myLogicalGroupIdsProvider);
   final isOwner = ref.watch(currentUserIsOwnerProvider);
   final permissions = ref.watch(currentUserPermissionsProvider).value;

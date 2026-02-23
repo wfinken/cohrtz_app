@@ -190,7 +190,7 @@ class _TaskDetailsDialogState extends ConsumerState<TaskDetailsDialog> {
       _task = updatedTask;
     });
 
-    await ref.read(dashboardRepositoryProvider).saveTask(updatedTask);
+    await ref.read(taskRepositoryProvider).saveTask(updatedTask);
   }
 
   String? _resolveUserLabel(String userId, List<UserProfile> profiles) {

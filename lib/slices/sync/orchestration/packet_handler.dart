@@ -21,6 +21,9 @@ import 'sync_protocol.dart';
 import '../runtime/key_manager.dart';
 import '../runtime/treekem_handler.dart';
 
+typedef PacketControlHandler =
+    Future<bool> Function(String roomName, P2PPacket packet);
+
 class PacketHandler {
   final HybridTimeService _hybridTimeService;
   final SecurityService _securityService;
@@ -55,6 +58,8 @@ class PacketHandler {
   // Buffer for GSK-encrypted packets
   final Map<String, List<(P2PPacket, List<int>)>> _packetsAwaitingGsk = {};
   final Map<String, DateTime> _lastProfileBroadcast = {};
+  late final Map<P2PPacket_PacketType, PacketControlHandler>
+  _packetControlHandlers;
 
   PacketHandler({
     required HybridTimeService hybridTimeService,
@@ -95,6 +100,13 @@ class PacketHandler {
        _sendSecurePacket = sendSecurePacket,
        _broadcast = broadcast,
        _getLocalUserProfileJsonForRoom = getLocalUserProfileJsonForRoom {
+    _packetControlHandlers = {
+      P2PPacket_PacketType.UNICAST_REQ: _handleUnicastControlPacket,
+      P2PPacket_PacketType.HANDSHAKE: _handleHandshakePacket,
+      P2PPacket_PacketType.INVITE_REQ: _handleInviteReqPacket,
+      P2PPacket_PacketType.INVITE_ACK: _handleInviteAckPacket,
+      P2PPacket_PacketType.INVITE_NACK: _handleInviteNackPacket,
+    };
     _treekemHandler.keyUpdates.listen((event) {
       updateGroupKey(event.$1, event.$2);
     });
@@ -127,65 +139,10 @@ class PacketHandler {
         return;
       }
 
-      if (packet.type == P2PPacket_PacketType.UNICAST_REQ) {
-        final handled = await _maybeHandleTimeSyncControl(roomName, packet);
+      final controlHandler = _packetControlHandlers[packet.type];
+      if (controlHandler != null) {
+        final handled = await controlHandler(roomName, packet);
         if (handled) return;
-      }
-
-      if (packet.type == P2PPacket_PacketType.HANDSHAKE) {
-        _hybridTimeService.observeIncomingPacket(packet);
-        // Handle Handshake & Check for new TreeKEM Keys
-        final newTreeKemKey = await _handshakeHandler.handleHandshake(
-          roomName,
-          packet,
-          () {
-            _maybeBroadcastLocalProfile(roomName);
-            onPeerHandshake(roomName, packet.senderId);
-            final group = _groupManager.findGroup(roomName);
-            if (group.isEmpty || group['isInviteRoom'] != 'true') {
-              _syncProtocol.requestSync(roomName);
-              // Proactively share GSK with the new peer so they can
-              // decrypt DATA_CHUNK packets without waiting for a GSK_REQ.
-              onGroupKeyShared(roomName, packet.senderId);
-            }
-          },
-        );
-
-        if (newTreeKemKey != null) {
-          // Check if this is an Invite Room
-          final group = _groupManager.findGroup(roomName);
-          if (group.isNotEmpty && group['isInviteRoom'] == 'true') {
-            Log.d(
-              'PacketHandler',
-              'Skipping TreeKEM onboarding for Invite Room: $roomName',
-            );
-          } else {
-            Log.i(
-              'PacketHandler',
-              'Handshake contained TreeKEM key from ${packet.senderId}. Initiating onboarding.',
-            );
-            await _attemptOnboard(roomName, packet.senderId, newTreeKemKey);
-          }
-        }
-        return;
-      }
-
-      if (packet.type == P2PPacket_PacketType.INVITE_REQ) {
-        _hybridTimeService.observeIncomingPacket(packet);
-        _inviteHandler.handleInviteReq(roomName, packet);
-        return;
-      }
-
-      if (packet.type == P2PPacket_PacketType.INVITE_ACK) {
-        _hybridTimeService.observeIncomingPacket(packet);
-        _inviteHandler.handleInviteAck(roomName, packet);
-        return;
-      }
-
-      if (packet.type == P2PPacket_PacketType.INVITE_NACK) {
-        _hybridTimeService.observeIncomingPacket(packet);
-        _inviteHandler.handleInviteNack(roomName, packet);
-        return;
       }
 
       final pubKey = _handshakeHandler.getPublicKey(roomName, packet.senderId);
@@ -203,6 +160,68 @@ class PacketHandler {
     } catch (e) {
       Log.e('PacketHandler', 'Error parsing packet', e);
     }
+  }
+
+  Future<bool> _handleUnicastControlPacket(
+    String roomName,
+    P2PPacket packet,
+  ) async {
+    return _maybeHandleTimeSyncControl(roomName, packet);
+  }
+
+  Future<bool> _handleHandshakePacket(String roomName, P2PPacket packet) async {
+    _hybridTimeService.observeIncomingPacket(packet);
+    final newTreeKemKey = await _handshakeHandler.handleHandshake(
+      roomName,
+      packet,
+      () {
+        _maybeBroadcastLocalProfile(roomName);
+        onPeerHandshake(roomName, packet.senderId);
+        final group = _groupManager.findGroup(roomName);
+        if (group.isEmpty || group['isInviteRoom'] != 'true') {
+          _syncProtocol.requestSync(roomName);
+          onGroupKeyShared(roomName, packet.senderId);
+        }
+      },
+    );
+
+    if (newTreeKemKey != null) {
+      final group = _groupManager.findGroup(roomName);
+      if (group.isNotEmpty && group['isInviteRoom'] == 'true') {
+        Log.d(
+          'PacketHandler',
+          'Skipping TreeKEM onboarding for Invite Room: $roomName',
+        );
+      } else {
+        Log.i(
+          'PacketHandler',
+          'Handshake contained TreeKEM key from ${packet.senderId}. Initiating onboarding.',
+        );
+        await _attemptOnboard(roomName, packet.senderId, newTreeKemKey);
+      }
+    }
+    return true;
+  }
+
+  Future<bool> _handleInviteReqPacket(String roomName, P2PPacket packet) async {
+    _hybridTimeService.observeIncomingPacket(packet);
+    _inviteHandler.handleInviteReq(roomName, packet);
+    return true;
+  }
+
+  Future<bool> _handleInviteAckPacket(String roomName, P2PPacket packet) async {
+    _hybridTimeService.observeIncomingPacket(packet);
+    _inviteHandler.handleInviteAck(roomName, packet);
+    return true;
+  }
+
+  Future<bool> _handleInviteNackPacket(
+    String roomName,
+    P2PPacket packet,
+  ) async {
+    _hybridTimeService.observeIncomingPacket(packet);
+    _inviteHandler.handleInviteNack(roomName, packet);
+    return true;
   }
 
   Future<void> _maybeBroadcastLocalProfile(String roomName) async {

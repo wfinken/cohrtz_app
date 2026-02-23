@@ -8,7 +8,9 @@ import 'package:cohortz/slices/permissions_feature/state/logical_group_providers
 import 'package:cohortz/slices/permissions_feature/ui/widgets/visibility_group_selector.dart';
 import '../../../../app/di/app_providers.dart';
 import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
+import 'package:cohortz/slices/dashboard_shell/state/repositories/task_repository.dart';
 import 'package:cohortz/slices/dashboard_shell/models/dashboard_models.dart';
+import 'package:cohortz/slices/tasks/state/task_providers.dart' as task_state;
 import '../dialogs/add_task_dialog.dart';
 import '../dialogs/task_details_dialog.dart';
 import 'package:cohortz/slices/dashboard_shell/models/system_model.dart';
@@ -20,8 +22,8 @@ class TasksWidget extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final repo = ref.watch(dashboardRepositoryProvider);
-    final tasksAsync = ref.watch(tasksStreamProvider);
+    final repo = ref.watch(taskRepositoryProvider);
+    final tasksAsync = ref.watch(task_state.tasksStreamProvider);
     final settingsAsync = ref.watch(groupSettingsProvider);
     final groupType = settingsAsync.value?.groupType ?? GroupType.family;
     final logicalGroups = ref.watch(logicalGroupsProvider);
@@ -364,7 +366,7 @@ class TasksWidget extends ConsumerWidget {
   }
 
   Future<void> _toggleTaskCompletion({
-    required DashboardRepository repo,
+    required ITaskRepository repo,
     required TaskItem task,
     required String? myId,
   }) async {
@@ -384,25 +386,4 @@ class TasksWidget extends ConsumerWidget {
   }
 }
 
-final tasksStreamProvider = StreamProvider<List<TaskItem>>((ref) {
-  final repo = ref.watch(dashboardRepositoryProvider);
-  final myGroupIds = ref.watch(myLogicalGroupIdsProvider);
-  final isOwner = ref.watch(currentUserIsOwnerProvider);
-  final permissions = ref.watch(currentUserPermissionsProvider).value;
-  final bypass =
-      isOwner ||
-      (permissions != null &&
-          PermissionUtils.has(permissions, PermissionFlags.administrator));
-
-  return repo.watchTasks().map((tasks) {
-    return tasks
-        .where(
-          (task) => canViewByLogicalGroups(
-            itemGroupIds: task.visibilityGroupIds,
-            viewerGroupIds: myGroupIds,
-            bypass: bypass,
-          ),
-        )
-        .toList();
-  });
-});
+final tasksStreamProvider = task_state.tasksStreamProvider;

@@ -567,7 +567,7 @@ class _AddVaultDialogState extends ConsumerState<AddVaultDialog> {
       );
 
       if (!mounted) return;
-      ref.read(dashboardRepositoryProvider).saveVaultItem(item);
+      ref.read(vaultRepositoryProvider).saveVaultItem(item);
       if (mounted) Navigator.pop(context);
     } catch (e) {
       debugPrint('[AddVaultDialog] Failed to save vault item: $e');
