@@ -5,15 +5,20 @@ import 'package:uuid/uuid.dart';
 
 import '../../slices/dashboard_shell/models/user_model.dart';
 import 'security_service.dart';
+import 'secure_storage_service.dart';
 
 /// Persists local profile metadata per group/room.
 ///
 /// Each group has its own user id + display name + public key snapshot.
 class GroupIdentityService {
-  GroupIdentityService({required SecurityService securityService})
-    : _securityService = securityService;
+  GroupIdentityService({
+    required SecurityService securityService,
+    ISecureStore? secureStorage,
+  }) : _securityService = securityService,
+       _secureStorage = secureStorage ?? SecureStorageService();
 
   final SecurityService _securityService;
+  final ISecureStore _secureStorage;
 
   static const _storagePrefix = 'cohrtz_group_identity_';
   static const _legacyGlobalProfileKey = 'cohrtz_global_profile';
@@ -22,10 +27,19 @@ class GroupIdentityService {
       '$_storagePrefix${Uri.encodeComponent(groupId)}';
 
   Future<UserProfile?> _loadLegacyGlobalProfile() async {
+    final secure = await _secureStorage.read(_legacyGlobalProfileKey);
+    if (secure != null && secure.isNotEmpty) {
+      try {
+        return UserProfileMapper.fromJson(secure);
+      } catch (_) {}
+    }
+
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_legacyGlobalProfileKey);
     if (raw == null || raw.isEmpty) return null;
     try {
+      await _secureStorage.write(_legacyGlobalProfileKey, raw);
+      await prefs.remove(_legacyGlobalProfileKey);
       return UserProfileMapper.fromJson(raw);
     } catch (_) {
       return null;
@@ -39,8 +53,30 @@ class GroupIdentityService {
 
   Future<UserProfile?> loadForGroup(String groupId) async {
     if (groupId.isEmpty) return null;
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_storageKey(groupId));
+    final key = _storageKey(groupId);
+    var raw = await _secureStorage.read(key);
+
+    if (raw == null || raw.isEmpty) {
+      // Legacy plaintext migration from SharedPreferences.
+      final prefs = await SharedPreferences.getInstance();
+      final legacy = prefs.getString(key);
+      if (legacy != null && legacy.isNotEmpty) {
+        raw = legacy;
+        await _secureStorage.write(key, legacy);
+      }
+
+      // Remove plaintext copy once migrated.
+      if (prefs.containsKey(key)) {
+        await prefs.remove(key);
+      }
+    } else {
+      // Remove stale plaintext copy if still present.
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.containsKey(key)) {
+        await prefs.remove(key);
+      }
+    }
+
     if (raw == null || raw.isEmpty) return null;
     try {
       return UserProfileMapper.fromJson(raw);
@@ -51,8 +87,14 @@ class GroupIdentityService {
 
   Future<void> saveForGroup(String groupId, UserProfile profile) async {
     if (groupId.isEmpty) return;
+    final key = _storageKey(groupId);
+    await _secureStorage.write(key, profile.toJson());
+
+    // Clean any legacy plaintext copy.
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_storageKey(groupId), profile.toJson());
+    if (prefs.containsKey(key)) {
+      await prefs.remove(key);
+    }
   }
 
   Future<UserProfile> ensureForGroup({

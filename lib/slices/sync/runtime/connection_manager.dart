@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:livekit_client/livekit_client.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cohortz/shared/config/app_config.dart';
 import '../../../shared/security/security_service.dart';
 import '../../../shared/security/secure_storage_service.dart';
@@ -425,22 +424,27 @@ class ConnectionManager extends ChangeNotifier {
 
       // Save connection details via GroupManager
       // (Moved inside try-finally to ensure _connectingRooms is cleaned up)
-      final prefs = await SharedPreferences.getInstance();
       if (setActive) {
         Log.i(
           'ConnectionManager',
           'Saving last active group: $roomName ($friendlyName)',
         );
-        await prefs.setString('last_group_name', roomName);
+        await _secureStorage.write('last_group_name', roomName);
         if (identity != null) {
-          await prefs.setString('last_group_identity', identity);
+          await _secureStorage.write('last_group_identity', identity);
         }
         final resolvedFriendlyName =
             friendlyName ?? _groupManager.getFriendlyName(roomName);
-        await prefs.setString('last_group_friendly_name', resolvedFriendlyName);
+        await _secureStorage.write(
+          'last_group_friendly_name',
+          resolvedFriendlyName,
+        );
         await _secureStorage.write('last_group_token', effectiveToken);
-        await prefs.setString('last_group_is_invite', isInviteRoom.toString());
-        await prefs.setString('last_group_is_host', isHost.toString());
+        await _secureStorage.write(
+          'last_group_is_invite',
+          isInviteRoom.toString(),
+        );
+        await _secureStorage.write('last_group_is_host', isHost.toString());
       } else {
         Log.i(
           'ConnectionManager',

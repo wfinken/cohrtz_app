@@ -9,6 +9,15 @@ import '../../../shared/security/secure_storage_service.dart';
 ///
 /// Extracted from SyncService to improve modularity and testability.
 class GroupManager {
+  static const String _knownGroupsKey = 'known_groups';
+  static const String _knownInviteRoomsKey = 'known_invite_rooms';
+  static const String _lastGroupNameKey = 'last_group_name';
+  static const String _lastGroupIdentityKey = 'last_group_identity';
+  static const String _lastGroupIsInviteKey = 'last_group_is_invite';
+  static const String _lastGroupIsHostKey = 'last_group_is_host';
+  static const String _lastGroupFriendlyNameKey = 'last_group_friendly_name';
+  static const String _lastGroupTokenKey = 'last_group_token';
+
   final ISecureStore _secureStorage;
   final VoidCallback? onGroupsChanged;
 
@@ -18,6 +27,56 @@ class GroupManager {
 
   GroupManager({required ISecureStore secureStorage, this.onGroupsChanged})
     : _secureStorage = secureStorage;
+
+  Future<String?> _readSecureStringWithLegacy(
+    SharedPreferences prefs,
+    String key,
+  ) async {
+    final secureValue = await _secureStorage.read(key);
+    if (secureValue != null) {
+      if (prefs.containsKey(key)) {
+        await prefs.remove(key);
+      }
+      return secureValue;
+    }
+
+    final legacyValue = prefs.getString(key);
+    if (legacyValue != null) {
+      await _secureStorage.write(key, legacyValue);
+      await prefs.remove(key);
+    }
+    return legacyValue;
+  }
+
+  Future<void> _removeLegacyIfPresent(
+    SharedPreferences prefs,
+    String key,
+  ) async {
+    if (prefs.containsKey(key)) {
+      await prefs.remove(key);
+    }
+  }
+
+  List<Map<String, String?>> _sanitizeGroups(
+    List<Map<String, String?>> groups,
+  ) {
+    return groups.map((g) {
+      final m = Map<String, String?>.from(g);
+      m.remove('token');
+      return m;
+    }).toList();
+  }
+
+  Future<void> _persistKnownGroups() async {
+    await _secureStorage.write(
+      _knownGroupsKey,
+      jsonEncode(_sanitizeGroups(_knownDataGroups)),
+    );
+    await _secureStorage.write(
+      _knownInviteRoomsKey,
+      jsonEncode(_sanitizeGroups(_knownInviteGroups)),
+    );
+  }
 
   /// Returns an unmodifiable view of known data groups.
   List<Map<String, String?>> get knownGroups =>
@@ -66,7 +125,7 @@ class GroupManager {
   Future<void> _loadKnownGroupsInternal() async {
     final prefs = await SharedPreferences.getInstance();
 
-    final dataJson = prefs.getString('known_groups');
+    final dataJson = await _readSecureStringWithLegacy(prefs, _knownGroupsKey);
     if (dataJson != null) {
       final List<dynamic> list = jsonDecode(dataJson);
       _knownDataGroups = list.map((e) => Map<String, String?>.from(e)).toList();
@@ -89,7 +148,10 @@ class GroupManager {
       _knownDataGroups = [];
     }
 
-    final inviteJson = prefs.getString('known_invite_rooms');
+    final inviteJson = await _readSecureStringWithLegacy(
+      prefs,
+      _knownInviteRoomsKey,
+    );
     if (inviteJson != null) {
       final List<dynamic> list = jsonDecode(inviteJson);
       _knownInviteGroups = list
@@ -118,13 +180,22 @@ class GroupManager {
     _knownDataGroups.removeWhere((g) => g['isInviteRoom'] == 'true');
     _knownInviteGroups.removeWhere((g) => g['isInviteRoom'] != 'true');
 
+    // Persist sanitized secure copies and clear any legacy plaintext JSON.
+    await _persistKnownGroups();
+    await _removeLegacyIfPresent(prefs, _knownGroupsKey);
+    await _removeLegacyIfPresent(prefs, _knownInviteRoomsKey);
+
     onGroupsChanged?.call();
   }
 
   /// Checks if there's a saved group for auto-join.
   Future<bool> get hasSavedGroup async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.containsKey('last_group_name');
+    final roomName = await _readSecureStringWithLegacy(
+      prefs,
+      _lastGroupNameKey,
+    );
+    return roomName != null && roomName.isNotEmpty;
   }
 
   /// Gets saved connection details for auto-join.
@@ -132,23 +203,44 @@ class GroupManager {
     String livekitUrl,
   ) async {
     final prefs = await SharedPreferences.getInstance();
-    final hasKey = prefs.containsKey('last_group_name');
-    final lastGroup = prefs.getString('last_group_name');
+    final roomName = await _readSecureStringWithLegacy(
+      prefs,
+      _lastGroupNameKey,
+    );
+    final hasKey = roomName != null && roomName.isNotEmpty;
     Log.d(
       'GroupManager',
-      'Checking saved details. HasKey: $hasKey, Name: $lastGroup',
+      'Checking saved details. HasKey: $hasKey, Name: $roomName',
     );
     if (!hasKey) return null;
 
+    final identity = await _readSecureStringWithLegacy(
+      prefs,
+      _lastGroupIdentityKey,
+    );
+    final isInvite = await _readSecureStringWithLegacy(
+      prefs,
+      _lastGroupIsInviteKey,
+    );
+    final friendlyName = await _readSecureStringWithLegacy(
+      prefs,
+      _lastGroupFriendlyNameKey,
+    );
+
+    // Keep only encrypted copy of host flag when present.
+    final hostFlag = prefs.getString(_lastGroupIsHostKey);
+    if (hostFlag != null && hostFlag.isNotEmpty) {
+      await _secureStorage.write(_lastGroupIsHostKey, hostFlag);
+      await prefs.remove(_lastGroupIsHostKey);
+    }
+
     return {
       'url': livekitUrl,
-      'roomName': prefs.getString('last_group_name'),
-      'identity': prefs.getString('last_group_identity'),
-      'isInviteRoom': prefs.getString('last_group_is_invite'),
-      'friendlyName':
-          prefs.getString('last_group_friendly_name') ??
-          await _lookupFriendlyName(prefs.getString('last_group_name')),
-      'token': await _secureStorage.read('last_group_token'),
+      'roomName': roomName,
+      'identity': identity,
+      'isInviteRoom': isInvite,
+      'friendlyName': friendlyName ?? await _lookupFriendlyName(roomName),
+      'token': await _secureStorage.read(_lastGroupTokenKey),
     };
   }
 
@@ -170,7 +262,6 @@ class GroupManager {
     bool isHost = false,
     String? token,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
     final entry = {
       'roomName': roomName,
       'dataRoomName': dataRoomName,
@@ -218,41 +309,23 @@ class GroupManager {
       await _secureStorage.write('token_$roomName', token);
     }
 
-    List<Map<String, String?>> sanitize(List<Map<String, String?>> groups) {
-      return groups.map((g) {
-        final m = Map<String, String?>.from(g);
-        m.remove('token');
-        return m;
-      }).toList();
-    }
-
     if (isInviteRoom) {
       _knownDataGroups.removeWhere((g) => g['roomName'] == roomName);
       _knownInviteGroups.removeWhere((g) => g['roomName'] == roomName);
       _knownInviteGroups.insert(0, entry);
-
-      await prefs.setString(
-        'known_invite_rooms',
-        jsonEncode(sanitize(_knownInviteGroups)),
-      );
-      await prefs.setString(
-        'known_groups',
-        jsonEncode(sanitize(_knownDataGroups)),
-      );
     } else {
       _knownInviteGroups.removeWhere((g) => g['roomName'] == roomName);
       _knownDataGroups.removeWhere((g) => g['roomName'] == roomName);
       _knownDataGroups.insert(0, entry);
-
-      await prefs.setString(
-        'known_groups',
-        jsonEncode(sanitize(_knownDataGroups)),
-      );
-      await prefs.setString(
-        'known_invite_rooms',
-        jsonEncode(sanitize(_knownInviteGroups)),
-      );
     }
+
+    await _persistKnownGroups();
+
+    // Remove legacy plaintext copies after secure persist.
+    final prefs = await SharedPreferences.getInstance();
+    await _removeLegacyIfPresent(prefs, _knownGroupsKey);
+    await _removeLegacyIfPresent(prefs, _knownInviteRoomsKey);
+
     onGroupsChanged?.call();
   }
 
@@ -278,8 +351,6 @@ class GroupManager {
 
   /// Removes a group from persistence.
   Future<void> forgetGroup(String roomName) async {
-    final prefs = await SharedPreferences.getInstance();
-
     // Find entries before removal
     final dataEntry = _knownDataGroups.firstWhere(
       (g) => g['roomName'] == roomName,
@@ -309,20 +380,36 @@ class GroupManager {
           (dataRoomName != null && g['dataRoomName'] == dataRoomName),
     );
 
-    // Persist changes
-    await prefs.setString('known_groups', jsonEncode(_knownDataGroups));
-    await prefs.setString('known_invite_rooms', jsonEncode(_knownInviteGroups));
+    // Persist changes securely.
+    await _persistKnownGroups();
+    await _secureStorage.delete('token_$roomName');
 
     // Clear last group if it was this one
-    final lastGroupName = prefs.getString('last_group_name');
+    final prefs = await SharedPreferences.getInstance();
+    final lastGroupName = await _readSecureStringWithLegacy(
+      prefs,
+      _lastGroupNameKey,
+    );
     if (lastGroupName == roomName ||
         (friendlyName != null && lastGroupName == friendlyName) ||
         (dataRoomName != null && lastGroupName == dataRoomName)) {
-      await prefs.remove('last_group_name');
-      await prefs.remove('last_group_identity');
-      await prefs.remove('last_group_is_invite');
-      await prefs.remove('last_group_friendly_name');
+      await _secureStorage.delete(_lastGroupNameKey);
+      await _secureStorage.delete(_lastGroupIdentityKey);
+      await _secureStorage.delete(_lastGroupIsInviteKey);
+      await _secureStorage.delete(_lastGroupFriendlyNameKey);
+      await _secureStorage.delete(_lastGroupIsHostKey);
+      await _secureStorage.delete(_lastGroupTokenKey);
+
+      await _removeLegacyIfPresent(prefs, _lastGroupNameKey);
+      await _removeLegacyIfPresent(prefs, _lastGroupIdentityKey);
+      await _removeLegacyIfPresent(prefs, _lastGroupIsInviteKey);
+      await _removeLegacyIfPresent(prefs, _lastGroupFriendlyNameKey);
+      await _removeLegacyIfPresent(prefs, _lastGroupIsHostKey);
+      await _removeLegacyIfPresent(prefs, _lastGroupTokenKey);
     }
+
+    await _removeLegacyIfPresent(prefs, _knownGroupsKey);
+    await _removeLegacyIfPresent(prefs, _knownInviteRoomsKey);
 
     onGroupsChanged?.call();
   }
