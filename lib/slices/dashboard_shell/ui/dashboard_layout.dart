@@ -114,10 +114,10 @@ class _DashboardLayoutState extends ConsumerState<DashboardLayout> {
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobileLayout = screenWidth < 900;
     final currentRoomName = syncState.currentRoomName;
-    final isConnected = syncState.isConnected;
+    final isAnyRoomConnected = syncState.isConnected;
     final knownGroups = syncState.knownGroups;
     final isActiveRoomConnected = syncState.isActiveRoomConnected;
-    final canShowDrawer = knownGroups.isNotEmpty && isActiveRoomConnected;
+    final canShowDrawer = knownGroups.isNotEmpty;
     final drawerOpen = _isDrawerOpen && canShowDrawer;
     final showInlineDrawer = !isMobileLayout && drawerOpen;
     final showOverlayDrawer = isMobileLayout && drawerOpen;
@@ -228,7 +228,8 @@ class _DashboardLayoutState extends ConsumerState<DashboardLayout> {
                                       : 0,
                                 ),
                                 child: _buildBodyContent(
-                                  isConnected,
+                                  isActiveRoomConnected,
+                                  isAnyRoomConnected,
                                   hasAvailableGroups,
                                   _calculateLayoutIdentifier(
                                     constraints.maxWidth,
@@ -326,7 +327,8 @@ class _DashboardLayoutState extends ConsumerState<DashboardLayout> {
   }
 
   Widget _buildBodyContent(
-    bool isConnected,
+    bool isActiveRoomConnected,
+    bool isAnyRoomConnected,
     bool hasAvailableGroups,
     int layoutIdentifier,
     int gridColumns,
@@ -336,7 +338,7 @@ class _DashboardLayoutState extends ConsumerState<DashboardLayout> {
     DashboardView currentView,
     Map<String, bool> viewPermissions,
   ) {
-    if (!hasAvailableGroups || !isConnected) {
+    if (!hasAvailableGroups) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -357,6 +359,35 @@ class _DashboardLayoutState extends ConsumerState<DashboardLayout> {
             SizedBox(height: 8),
             Text(
               'Join a group to start collaborating.',
+              style: TextStyle(color: Theme.of(context).hintColor),
+            ),
+          ],
+        ),
+      );
+    }
+    if (!isActiveRoomConnected) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              isAnyRoomConnected ? Icons.sync : Icons.wifi_off,
+              size: 64,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(height: 24),
+            Text(
+              isAnyRoomConnected
+                  ? 'Finishing group sync...'
+                  : 'Connecting to group...',
+              style: TextStyle(
+                fontSize: 18,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Please keep this window open for a few seconds.',
               style: TextStyle(color: Theme.of(context).hintColor),
             ),
           ],

@@ -75,8 +75,12 @@ class _WatchableCrdtService extends CrdtService {
       StreamController<List<Map<String, Object?>>>.broadcast();
 
   List<Map<String, Object?>> groupSettingsRows;
+  final Map<String, String> avatarBlobs;
 
-  _WatchableCrdtService({required this.groupSettingsRows});
+  _WatchableCrdtService({
+    required this.groupSettingsRows,
+    this.avatarBlobs = const {},
+  });
 
   @override
   Stream<List<Map<String, Object?>>> watch(
@@ -100,6 +104,18 @@ class _WatchableCrdtService extends CrdtService {
       return groupSettingsRows;
     }
     return [];
+  }
+
+  @override
+  Future<String?> get(
+    String roomName,
+    String key, {
+    String tableName = 'cohrtz',
+  }) async {
+    if (tableName == 'avatar_blobs') {
+      return avatarBlobs[key];
+    }
+    return null;
   }
 }
 
@@ -164,6 +180,73 @@ void main() {
       expect(call.friendlyName, 'Updated Group');
       expect(call.avatarBase64, 'remote-avatar-base64');
       expect(call.description, 'New description');
+
+      manager.dispose();
+      await crdt.groupSettingsController.close();
+    },
+  );
+
+  test(
+    'Group metadata resolves avatar by avatarRef when base64 is omitted',
+    () async {
+      const roomName = 'room-43';
+      final settings = GroupSettings(
+        id: 'group_settings',
+        name: 'Ref Avatar Group',
+        description: 'Avatar via ref',
+        avatarRef: 'avatar-hash-1',
+        createdAt: DateTime.utc(2026, 1, 1),
+        dataRoomName: roomName,
+      );
+
+      final crdt = _WatchableCrdtService(
+        groupSettingsRows: [
+          {'id': 'group_settings', 'value': settings.toJson()},
+        ],
+        avatarBlobs: const {'avatar-hash-1': 'remote-avatar-base64'},
+      );
+      final groupManager = _RecordingGroupManager(
+        groups: {
+          roomName: {
+            'roomName': roomName,
+            'dataRoomName': roomName,
+            'identity': 'user:local',
+            'friendlyName': 'Old Name',
+            'avatarBase64': '',
+            'description': '',
+            'isInviteRoom': 'false',
+            'isHost': 'false',
+          },
+        },
+      );
+
+      final manager = ConnectionManager(
+        crdtService: crdt,
+        securityService: FakeSecurityService(),
+        secureStorage: FakeSecureStorageService(),
+        groupManager: groupManager,
+        nodeId: 'node-id',
+        onDataReceived: (_, __) {},
+        onParticipantConnected: (_, __) {},
+        onParticipantDisconnected: (_, __) {},
+        onRoomConnectionStateChanged: (_, __) {},
+        onLocalDataChanged: (_, __) {},
+        onInitializeSync: (_, __) async {},
+        onCleanupSync: (_) {},
+      );
+
+      await manager.startGroupSettingsWatchForTesting(roomName);
+      crdt.groupSettingsController.add(const []);
+
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(groupManager.saveCalls.length, 1);
+      final call = groupManager.saveCalls.single;
+      expect(call.roomName, roomName);
+      expect(call.friendlyName, 'Ref Avatar Group');
+      expect(call.avatarBase64, 'remote-avatar-base64');
+      expect(call.description, 'Avatar via ref');
 
       manager.dispose();
       await crdt.groupSettingsController.close();

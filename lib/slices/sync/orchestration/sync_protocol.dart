@@ -39,6 +39,14 @@ class SyncProtocol {
   final _random = Random();
   final Map<String, DateTime> _lastSyncRequest = {};
   final Map<String, DateTime> _lastConsistencyCheck = {};
+  static const Set<String> _alwaysIncludeSyncTables = {
+    'group_settings',
+    'roles',
+    'members',
+    'user_profiles',
+    'dashboard_widgets',
+    'avatar_blobs',
+  };
 
   SyncProtocol({
     required CrdtService crdtService,
@@ -161,6 +169,7 @@ class SyncProtocol {
       final changeset = remoteVc != null
           ? await _crdtService.getChangesetFromVector(roomName, remoteVc)
           : await _crdtService.getChangeset(roomName);
+      await _mergeAlwaysIncludedTables(roomName, changeset);
 
       Log.d('SyncProtocol', 'Changeset contains ${changeset.length} tables.');
 
@@ -348,5 +357,17 @@ class SyncProtocol {
   void dispose() {
     _electionTimer?.cancel();
     _electionTimer = null;
+  }
+
+  Future<void> _mergeAlwaysIncludedTables(
+    String roomName,
+    Map<String, List<CrdtRecord>> changeset,
+  ) async {
+    final fullChangeset = await _crdtService.getChangeset(roomName);
+    for (final table in _alwaysIncludeSyncTables) {
+      final records = fullChangeset[table];
+      if (records == null || records.isEmpty) continue;
+      changeset[table] = records;
+    }
   }
 }

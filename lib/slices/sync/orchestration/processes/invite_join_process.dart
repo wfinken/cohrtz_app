@@ -207,11 +207,18 @@ class InviteJoinProcess implements SyncProcess {
 
         _onStepUpdate(2, StepStatus.current); // Transitioning to secure mesh
         await _keyManager.clearGroupKey(e.dataRoomUUID);
-        final dataRoomProfile = await _groupIdentityService.ensureForGroup(
+        var dataRoomProfile = await _groupIdentityService.ensureForGroup(
           groupId: e.dataRoomUUID,
           displayName: profile.displayName,
           fallbackIdentity: profile.id,
         );
+        if (profile.id.isNotEmpty && dataRoomProfile.id != profile.id) {
+          dataRoomProfile = dataRoomProfile.copyWith(id: profile.id);
+          await _groupIdentityService.saveForGroup(
+            e.dataRoomUUID,
+            dataRoomProfile,
+          );
+        }
         final dataToken = await _fetchToken(e.dataRoomUUID, dataRoomProfile.id);
 
         await _syncService.connect(
@@ -221,6 +228,7 @@ class InviteJoinProcess implements SyncProcess {
           friendlyName: roomName,
           isHost: false,
         );
+        _syncService.setActiveRoom(e.dataRoomUUID);
         _onStepUpdate(2, StepStatus.completed);
 
         _onStepUpdate(3, StepStatus.current); // Verifying
@@ -230,11 +238,32 @@ class InviteJoinProcess implements SyncProcess {
           _hybridTimeService,
         );
         await dataRoomRepo.saveUserProfile(dataRoomProfile);
-        await _reconcileMemberIdentityAfterJoin(
+        final reconciled = await _reconcileMemberIdentityAfterJoin(
           roomName: e.dataRoomUUID,
           inviteIdentity: profile.id,
           dataRoomIdentity: dataRoomProfile.id,
         );
+        if (!reconciled) {
+          unawaited(
+            _retryMemberIdentityReconciliation(
+              roomName: e.dataRoomUUID,
+              inviteIdentity: profile.id,
+              dataRoomIdentity: dataRoomProfile.id,
+            ),
+          );
+        }
+        final ensuredRole = await _ensureMemberRoleAfterJoin(
+          roomName: e.dataRoomUUID,
+          memberId: dataRoomProfile.id,
+        );
+        if (!ensuredRole) {
+          unawaited(
+            _retryEnsureMemberRoleAfterJoin(
+              roomName: e.dataRoomUUID,
+              memberId: dataRoomProfile.id,
+            ),
+          );
+        }
 
         _onStepUpdate(3, StepStatus.completed);
         return;
@@ -252,7 +281,7 @@ class InviteJoinProcess implements SyncProcess {
     );
   }
 
-  Future<void> _reconcileMemberIdentityAfterJoin({
+  Future<bool> _reconcileMemberIdentityAfterJoin({
     required String roomName,
     required String inviteIdentity,
     required String dataRoomIdentity,
@@ -260,7 +289,7 @@ class InviteJoinProcess implements SyncProcess {
     if (inviteIdentity.isEmpty ||
         dataRoomIdentity.isEmpty ||
         inviteIdentity == dataRoomIdentity) {
-      return;
+      return true;
     }
 
     try {
@@ -272,21 +301,29 @@ class InviteJoinProcess implements SyncProcess {
       final currentValue = currentRows.isNotEmpty
           ? (currentRows.first['value'] as String? ?? '')
           : '';
-      final hasCurrentMember = currentValue.isNotEmpty;
-      if (hasCurrentMember) return;
+      if (currentValue.isNotEmpty) {
+        try {
+          final currentMember = GroupMemberMapper.fromJson(currentValue);
+          if (currentMember.roleIds.isNotEmpty) {
+            return true;
+          }
+        } catch (_) {
+          // Continue with legacy reconciliation below.
+        }
+      }
 
       final legacyRows = await _crdtService.query(
         roomName,
         'SELECT value FROM members WHERE id = ?',
         [inviteIdentity],
       );
-      if (legacyRows.isEmpty) return;
+      if (legacyRows.isEmpty) return false;
 
       final legacyValue = legacyRows.first['value'] as String? ?? '';
-      if (legacyValue.isEmpty) return;
+      if (legacyValue.isEmpty) return false;
 
       final legacyMember = GroupMemberMapper.fromJson(legacyValue);
-      if (legacyMember.roleIds.isEmpty) return;
+      if (legacyMember.roleIds.isEmpty) return false;
 
       final mappedMember = GroupMember(
         id: dataRoomIdentity,
@@ -304,11 +341,129 @@ class InviteJoinProcess implements SyncProcess {
         'InviteJoinProcess',
         'Mapped invite identity $inviteIdentity roles to $dataRoomIdentity in $roomName.',
       );
+      return true;
     } catch (e) {
       Log.w(
         'InviteJoinProcess',
         'Failed to reconcile member identity for $dataRoomIdentity in $roomName: $e',
       );
+      return false;
     }
+  }
+
+  Future<void> _retryMemberIdentityReconciliation({
+    required String roomName,
+    required String inviteIdentity,
+    required String dataRoomIdentity,
+  }) async {
+    if (inviteIdentity.isEmpty ||
+        dataRoomIdentity.isEmpty ||
+        inviteIdentity == dataRoomIdentity) {
+      return;
+    }
+    for (var attempt = 0; attempt < 20; attempt++) {
+      final reconciled = await _reconcileMemberIdentityAfterJoin(
+        roomName: roomName,
+        inviteIdentity: inviteIdentity,
+        dataRoomIdentity: dataRoomIdentity,
+      );
+      if (reconciled) return;
+      await Future.delayed(const Duration(seconds: 1));
+    }
+    Log.w(
+      'InviteJoinProcess',
+      'Timed out reconciling invite identity $inviteIdentity to $dataRoomIdentity in $roomName.',
+    );
+  }
+
+  Future<bool> _ensureMemberRoleAfterJoin({
+    required String roomName,
+    required String memberId,
+  }) async {
+    if (roomName.isEmpty || memberId.isEmpty) return false;
+    try {
+      final roleRows = await _crdtService.query(
+        roomName,
+        'SELECT value FROM roles WHERE is_deleted = 0',
+      );
+      final roles = <Role>[];
+      for (final row in roleRows) {
+        final value = row['value'] as String? ?? '';
+        if (value.isEmpty) continue;
+        try {
+          roles.add(RoleMapper.fromJson(value));
+        } catch (_) {}
+      }
+      if (roles.isEmpty) return false;
+      final roleIds = roles.map((r) => r.id).toSet();
+
+      final memberRows = await _crdtService.query(
+        roomName,
+        'SELECT value FROM members WHERE id = ?',
+        [memberId],
+      );
+      GroupMember currentMember = GroupMember(id: memberId, roleIds: []);
+      if (memberRows.isNotEmpty) {
+        final value = memberRows.first['value'] as String? ?? '';
+        if (value.isNotEmpty) {
+          try {
+            currentMember = GroupMemberMapper.fromJson(value);
+          } catch (_) {}
+        }
+      }
+
+      final hasValidRole = currentMember.roleIds.any(roleIds.contains);
+      if (hasValidRole) return true;
+
+      final memberRole =
+          roles
+              .where((r) => r.name.toLowerCase() == 'member')
+              .fold<Role?>(
+                null,
+                (best, role) =>
+                    best == null || role.position < best.position ? role : best,
+              ) ??
+          (roles..sort((a, b) => a.position.compareTo(b.position))).first;
+
+      final updated = currentMember.copyWith(
+        roleIds: {...currentMember.roleIds, memberRole.id}.toList(),
+      );
+      await _crdtService.put(
+        roomName,
+        memberId,
+        jsonEncode(updated.toMap()),
+        tableName: 'members',
+      );
+      Log.i(
+        'InviteJoinProcess',
+        'Ensured role ${memberRole.id} for joined member $memberId in $roomName.',
+      );
+      return true;
+    } catch (e) {
+      Log.w(
+        'InviteJoinProcess',
+        'Failed ensuring member role for $memberId in $roomName: $e',
+      );
+      return false;
+    }
+  }
+
+  Future<void> _retryEnsureMemberRoleAfterJoin({
+    required String roomName,
+    required String memberId,
+  }) async {
+    if (roomName.isEmpty || memberId.isEmpty) return;
+    for (var attempt = 0; attempt < 20; attempt++) {
+      final ensured = await _ensureMemberRoleAfterJoin(
+        roomName: roomName,
+        memberId: memberId,
+      );
+      if (ensured) return;
+      await Future.delayed(const Duration(seconds: 1));
+    }
+    Log.w(
+      'InviteJoinProcess',
+      'Timed out ensuring member roles for $memberId in $roomName.',
+    );
   }
 }

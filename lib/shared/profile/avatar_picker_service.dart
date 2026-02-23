@@ -3,8 +3,10 @@ import 'dart:typed_data';
 import 'package:crop_your_image/crop_your_image.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
 
 import 'avatar_processing_service.dart';
+import 'profile_constants.dart';
 
 class AvatarPickerService {
   static Future<AvatarProcessResult?> pickCropAndProcessAvatar(
@@ -22,20 +24,18 @@ class AvatarPickerService {
     if (bytes == null || bytes.isEmpty) {
       return null;
     }
+    final preparedBytes = AvatarProcessingService.prepareBytesForCropping(
+      bytes,
+    );
     if (!context.mounted) {
       return null;
     }
 
-    final croppedBytes = await showDialog<Uint8List>(
+    return showDialog<AvatarProcessResult>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => _AvatarCropDialog(imageBytes: bytes),
+      builder: (_) => _AvatarCropDialog(imageBytes: preparedBytes),
     );
-    if (croppedBytes == null || croppedBytes.isEmpty) {
-      return null;
-    }
-
-    return AvatarProcessingService.processAvatarBytes(croppedBytes);
   }
 }
 
@@ -69,7 +69,7 @@ class _AvatarCropDialogState extends State<_AvatarCropDialog> {
     return null;
   }
 
-  void _onCropped(dynamic result) {
+  Future<void> _onCropped(dynamic result) async {
     final cropped = _extractCroppedBytes(result);
     if (!mounted) return;
     if (cropped == null || cropped.isEmpty) {
@@ -79,7 +79,34 @@ class _AvatarCropDialogState extends State<_AvatarCropDialog> {
       );
       return;
     }
-    Navigator.of(context).pop(cropped);
+
+    try {
+      final processed = AvatarProcessingService.processAvatarBytes(cropped);
+      if (!mounted) return;
+      Navigator.of(context).pop(processed);
+    } on AvatarTooLargeException {
+      if (!mounted) return;
+      setState(() => _cropping = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Image is still too large after compression. Please choose a different image.',
+          ),
+        ),
+      );
+    } on AvatarDecodeException {
+      if (!mounted) return;
+      setState(() => _cropping = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not decode selected image.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _cropping = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Avatar processing failed: $e')));
+    }
   }
 
   @override
@@ -114,6 +141,10 @@ class _AvatarCropDialogState extends State<_AvatarCropDialog> {
                   withCircleUi: true,
                   aspectRatio: 1,
                   interactive: true,
+                  progressIndicator: const Center(
+                    child: CircularProgressIndicator(),
+                  ),
+                  imageCropper: const _AvatarImageCropper(),
                   cornerDotBuilder: (size, edgeAlignment) {
                     return const DecoratedBox(
                       decoration: BoxDecoration(
@@ -156,6 +187,50 @@ class _AvatarCropDialogState extends State<_AvatarCropDialog> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _AvatarImageCropper extends ImageCropper<img.Image> {
+  const _AvatarImageCropper();
+
+  @override
+  Uint8List call({
+    required img.Image original,
+    required Offset topLeft,
+    required Offset bottomRight,
+    Object? outputFormat,
+    Object? shape,
+  }) {
+    final cropLeft = topLeft.dx.floor().clamp(0, original.width - 1).toInt();
+    final cropTop = topLeft.dy.floor().clamp(0, original.height - 1).toInt();
+    final cropRight = bottomRight.dx
+        .ceil()
+        .clamp(cropLeft + 1, original.width)
+        .toInt();
+    final cropBottom = bottomRight.dy
+        .ceil()
+        .clamp(cropTop + 1, original.height)
+        .toInt();
+    final cropWidth = cropRight - cropLeft;
+    final cropHeight = cropBottom - cropTop;
+
+    final cropped = img.copyCrop(
+      original,
+      x: cropLeft,
+      y: cropTop,
+      width: cropWidth,
+      height: cropHeight,
+    );
+    final resized = img.copyResize(
+      cropped,
+      width: kAvatarCropOutputPixels,
+      height: kAvatarCropOutputPixels,
+      interpolation: img.Interpolation.average,
+    );
+
+    return Uint8List.fromList(
+      img.encodeJpg(resized, quality: kAvatarCropOutputJpegQuality),
     );
   }
 }

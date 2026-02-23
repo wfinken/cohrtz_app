@@ -79,6 +79,18 @@ class UserProfiles extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+@DataClassName('AvatarBlobEntity')
+class AvatarBlobs extends Table {
+  @override
+  String get tableName => 'avatar_blob_cache';
+
+  TextColumn get id => text()();
+  BlobColumn get data => blob()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 @DataClassName('MemberEntity')
 class Members extends Table {
   TextColumn get id => text()();
@@ -156,6 +168,7 @@ class Polls extends Table {
     ChatMessages,
     ChatThreads,
     UserProfiles,
+    AvatarBlobs,
     Members,
     Roles,
     GroupSettingsTable,

@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cohortz/slices/sync/orchestration/packet_handler.dart';
 import 'security_provider.dart';
@@ -79,7 +82,36 @@ final packetHandlerProvider = Provider<PacketHandler>((ref) {
           fallbackIdentity: localId,
         );
       }
-      return profile.toJson();
+      final avatarBase64 = profile.avatarBase64.trim();
+      var profileToBroadcast = profile;
+      if (avatarBase64.isNotEmpty) {
+        var avatarRef = profileToBroadcast.avatarRef.trim();
+        if (avatarRef.isEmpty) {
+          try {
+            avatarRef = sha256.convert(base64Decode(avatarBase64)).toString();
+          } catch (_) {
+            avatarRef = sha256.convert(utf8.encode(avatarBase64)).toString();
+          }
+        }
+        try {
+          await ref
+              .read(crdtServiceProvider)
+              .put(
+                roomName,
+                avatarRef,
+                avatarBase64,
+                tableName: 'avatar_blobs',
+              );
+          profileToBroadcast = profileToBroadcast.copyWith(
+            avatarBase64: '',
+            avatarRef: avatarRef,
+          );
+        } catch (_) {
+          // If avatar blob table is not available yet on this client,
+          // fall back to inline avatar payload to avoid breaking join/profile sync.
+        }
+      }
+      return profileToBroadcast.toJson();
     },
   );
 });

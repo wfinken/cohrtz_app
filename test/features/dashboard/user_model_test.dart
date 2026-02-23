@@ -19,6 +19,7 @@ void main() {
         'displayName': 'Test User',
         'publicKey': 'pubkey123',
         'avatarBase64': 'img-data',
+        'avatarRef': '',
         'bio': 'bio text',
       });
     });
@@ -36,6 +37,7 @@ void main() {
       expect(user.displayName, 'Another User');
       expect(user.publicKey, 'key456');
       expect(user.avatarBase64, isEmpty);
+      expect(user.avatarRef, isEmpty);
       expect(user.bio, isEmpty);
     });
 
@@ -53,6 +55,7 @@ void main() {
       expect(copy.displayName, original.displayName);
       expect(copy.publicKey, original.publicKey);
       expect(copy.avatarBase64, original.avatarBase64);
+      expect(copy.avatarRef, original.avatarRef);
       expect(copy.bio, original.bio);
     });
   });

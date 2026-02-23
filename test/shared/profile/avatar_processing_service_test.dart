@@ -7,6 +7,41 @@ import 'package:cohortz/shared/profile/profile_constants.dart';
 
 void main() {
   group('AvatarProcessingService', () {
+    test('prepareBytesForCropping downsizes large source images', () {
+      final source = img.Image(width: 3200, height: 1800);
+      img.fill(source, color: img.ColorRgb8(42, 120, 225));
+      final encoded = Uint8List.fromList(img.encodePng(source));
+
+      final prepared = AvatarProcessingService.prepareBytesForCropping(
+        encoded,
+        maxInputPixels: 1200,
+        reencodeThresholdBytes: 1024,
+      );
+      final decodedPrepared = img.decodeImage(prepared);
+
+      expect(decodedPrepared, isNotNull);
+      expect(
+        decodedPrepared!.width > decodedPrepared.height
+            ? decodedPrepared.width
+            : decodedPrepared.height,
+        lessThanOrEqualTo(1200),
+      );
+    });
+
+    test('prepareBytesForCropping keeps smaller images untouched', () {
+      final source = img.Image(width: 420, height: 260);
+      img.fill(source, color: img.ColorRgb8(42, 120, 225));
+      final encoded = Uint8List.fromList(img.encodePng(source));
+
+      final prepared = AvatarProcessingService.prepareBytesForCropping(
+        encoded,
+        maxInputPixels: 1200,
+        reencodeThresholdBytes: 1024 * 1024 * 8,
+      );
+
+      expect(prepared, same(encoded));
+    });
+
     test('processes valid image into bounded base64 payload', () {
       final source = img.Image(width: 420, height: 260);
       img.fill(source, color: img.ColorRgb8(42, 120, 225));

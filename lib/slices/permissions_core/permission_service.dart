@@ -4,6 +4,7 @@ import 'package:cohortz/slices/dashboard_shell/models/system_model.dart';
 import 'package:cohortz/slices/permissions_feature/models/member_model.dart';
 import 'package:cohortz/slices/permissions_feature/models/role_model.dart';
 import 'package:cohortz/slices/sync/runtime/crdt_service.dart';
+import 'package:cohortz/shared/utils/logging_service.dart';
 
 class PermissionService {
   final CrdtService _crdtService;
@@ -17,7 +18,13 @@ class PermissionService {
     }
 
     final member = await _getMember(roomName, memberId);
-    if (member == null) return PermissionFlags.none;
+    if (member == null) {
+      Log.w(
+        'PermissionService',
+        'No member row for $memberId in $roomName. Returning none.',
+      );
+      return PermissionFlags.none;
+    }
 
     final roles = await _getRoles(roomName);
     int finalPermissions = 0;
@@ -29,6 +36,13 @@ class PermissionService {
 
     if ((finalPermissions & PermissionFlags.administrator) != 0) {
       return PermissionFlags.all;
+    }
+
+    if (finalPermissions == 0) {
+      Log.w(
+        'PermissionService',
+        'Resolved zero permissions for $memberId in $roomName. roleIds=${member.roleIds}, roles=${roles.map((r) => r.id).toList()}',
+      );
     }
 
     return PermissionFlags.normalize(finalPermissions);
