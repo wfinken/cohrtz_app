@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:livekit_client/livekit_client.dart';
+import 'package:cohortz/slices/sync/contracts/group_descriptor.dart';
 
 import 'sync_service_provider.dart';
 
@@ -13,6 +14,7 @@ class SyncServiceState {
     required this.isActiveRoomConnected,
     required this.isActiveRoomConnecting,
     required this.knownGroups,
+    required this.knownGroupDescriptors,
     required this.remoteParticipants,
   });
 
@@ -22,6 +24,7 @@ class SyncServiceState {
   final bool isActiveRoomConnected;
   final bool isActiveRoomConnecting;
   final List<Map<String, String?>> knownGroups;
+  final List<GroupDescriptor> knownGroupDescriptors;
   final Map<String, RemoteParticipant> remoteParticipants;
 }
 
@@ -34,6 +37,9 @@ final syncServiceStateProvider = Provider<SyncServiceState>((ref) {
     isActiveRoomConnected: syncService.isActiveRoomConnected,
     isActiveRoomConnecting: syncService.isActiveRoomConnecting,
     knownGroups: List<Map<String, String?>>.from(syncService.knownGroups),
+    knownGroupDescriptors: List<GroupDescriptor>.from(
+      syncService.knownGroupDescriptors,
+    ),
     remoteParticipants: Map<String, RemoteParticipant>.from(
       syncService.remoteParticipants,
     ),

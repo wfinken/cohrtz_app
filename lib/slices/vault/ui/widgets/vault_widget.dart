@@ -543,7 +543,7 @@ class _VaultItemTileState extends ConsumerState<_VaultItemTile> {
       return;
     }
 
-    await ref.read(dashboardRepositoryProvider).deleteVaultItem(widget.item.id);
+    await ref.read(vaultRepositoryProvider).deleteVaultItem(widget.item.id);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -564,7 +564,7 @@ class _VaultItemTileState extends ConsumerState<_VaultItemTile> {
     if (selected == null) return;
 
     await ref
-        .read(dashboardRepositoryProvider)
+        .read(vaultRepositoryProvider)
         .saveVaultItem(
           widget.item.copyWith(
             visibilityGroupIds: normalizeVisibilityGroupIds(selected),
@@ -580,7 +580,7 @@ class _VaultItemTileState extends ConsumerState<_VaultItemTile> {
 }
 
 final vaultStreamProvider = StreamProvider<List<VaultItem>>((ref) {
-  final repo = ref.watch(dashboardRepositoryProvider);
+  final repo = ref.watch(vaultRepositoryProvider);
   final myGroupIds = ref.watch(myLogicalGroupIdsProvider);
   final isOwner = ref.watch(currentUserIsOwnerProvider);
   final permissions = ref.watch(currentUserPermissionsProvider).value;

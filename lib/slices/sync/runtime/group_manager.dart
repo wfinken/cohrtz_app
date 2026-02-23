@@ -2,23 +2,22 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cohortz/shared/utils/logging_service.dart';
+import 'package:cohortz/slices/sync/contracts/group_descriptor.dart';
 import '../../../shared/security/secure_storage_service.dart';
 
 /// Manages persistence and retrieval of known groups (data rooms and invite rooms).
 ///
 /// Extracted from SyncService to improve modularity and testability.
 class GroupManager {
-  final SecureStorageService _secureStorage;
+  final ISecureStore _secureStorage;
   final VoidCallback? onGroupsChanged;
 
   List<Map<String, String?>> _knownDataGroups = [];
   List<Map<String, String?>> _knownInviteGroups = [];
   Future<void>? _loadFuture;
 
-  GroupManager({
-    required SecureStorageService secureStorage,
-    this.onGroupsChanged,
-  }) : _secureStorage = secureStorage;
+  GroupManager({required ISecureStore secureStorage, this.onGroupsChanged})
+    : _secureStorage = secureStorage;
 
   /// Returns an unmodifiable view of known data groups.
   List<Map<String, String?>> get knownGroups =>
@@ -32,10 +31,29 @@ class GroupManager {
   List<Map<String, String?>> get allKnownGroups =>
       List.unmodifiable([..._knownDataGroups, ..._knownInviteGroups]);
 
+  List<GroupDescriptor> get knownGroupDescriptors =>
+      _knownDataGroups.map(GroupDescriptor.fromMap).toList(growable: false);
+
+  List<GroupDescriptor> get knownInviteGroupDescriptors =>
+      _knownInviteGroups.map(GroupDescriptor.fromMap).toList(growable: false);
+
+  List<GroupDescriptor> get allKnownGroupDescriptors => [
+    ...knownGroupDescriptors,
+    ...knownInviteGroupDescriptors,
+  ];
+
   /// Returns a copy of known data groups (safe for iteration during modification).
   Future<List<Map<String, String?>>> getKnownGroups() async {
     await loadKnownGroups();
     return List<Map<String, String?>>.from(_knownDataGroups);
+  }
+
+  Future<KnownGroupsSnapshot> getKnownGroupsSnapshot() async {
+    await loadKnownGroups();
+    return KnownGroupsSnapshot(
+      dataGroups: knownGroupDescriptors,
+      inviteGroups: knownInviteGroupDescriptors,
+    );
   }
 
   /// Loads known groups from persistent storage.
@@ -318,5 +336,11 @@ class GroupManager {
         orElse: () => {},
       ),
     );
+  }
+
+  GroupDescriptor? findGroupDescriptor(String roomName) {
+    final map = findGroup(roomName);
+    if (map.isEmpty) return null;
+    return GroupDescriptor.fromMap(map);
   }
 }

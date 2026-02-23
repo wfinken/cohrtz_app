@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cohortz/slices/sync/orchestration/sync_service.dart';
+import 'package:cohortz/slices/sync/contracts/sync_service_contract.dart';
 import 'connection_manager_provider.dart';
 import 'group_manager_provider.dart';
 import 'key_manager_provider.dart';
@@ -42,3 +43,7 @@ class SyncServiceNotifier extends Notifier<SyncService> {
 final syncServiceProvider = NotifierProvider<SyncServiceNotifier, SyncService>(
   SyncServiceNotifier.new,
 );
+
+final iSyncServiceProvider = Provider<ISyncService>((ref) {
+  return ref.watch(syncServiceProvider);
+});

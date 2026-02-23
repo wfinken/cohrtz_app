@@ -934,7 +934,7 @@ class _AddTaskDialogState extends ConsumerState<AddTaskDialog> {
       visibilityGroupIds: normalizeVisibilityGroupIds(_visibilityGroupIds),
     );
 
-    ref.read(dashboardRepositoryProvider).saveTask(task);
+    ref.read(taskRepositoryProvider).saveTask(task);
     Navigator.pop(context);
   }
 }

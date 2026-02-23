@@ -9,12 +9,15 @@ import 'secure_storage_service.dart';
 class SecurityService {
   final _algorithm = Ed25519();
   final _keyExchangeAlgorithm = X25519();
-  final _secureStorage = SecureStorageService();
+  final ISecureStore _secureStorage;
   static const String _globalGroupId = '__cohrtz_global__';
 
   final Map<String, SimpleKeyPair> _signingKeyPairs = {};
   final Map<String, SimpleKeyPair> _encryptionKeyPairs = {};
   final Map<String, Future<void>> _initializationFutures = {};
+
+  SecurityService({ISecureStore? secureStorage})
+    : _secureStorage = secureStorage ?? SecureStorageService();
 
   Future<void> initialize() async {
     await _ensureInitialized(_globalGroupId, legacyStorageKeys: true);

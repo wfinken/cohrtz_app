@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/di/app_providers.dart';
@@ -8,6 +7,10 @@ import '../../../shared/database/database.dart';
 import '../../sync/runtime/crdt_service.dart';
 import '../../sync/runtime/hybrid_time_service.dart';
 import 'local_dashboard_storage.dart';
+import 'repositories/calendar_repository.dart';
+import 'repositories/chat_repository.dart';
+import 'repositories/task_repository.dart';
+import 'repositories/vault_repository.dart';
 import 'package:cohortz/slices/dashboard_shell/models/dashboard_models.dart';
 import 'package:cohortz/slices/dashboard_shell/models/user_model.dart';
 import 'package:cohortz/slices/dashboard_shell/models/system_model.dart';
@@ -24,436 +27,203 @@ final dashboardRepositoryProvider = Provider<DashboardRepository>((ref) {
   );
 });
 
+final taskRepositoryProvider = Provider<ITaskRepository>((ref) {
+  return _DashboardTaskRepositoryAdapter(
+    ref.watch(dashboardRepositoryProvider),
+  );
+});
+
+final calendarRepositoryProvider = Provider<ICalendarRepository>((ref) {
+  return _DashboardCalendarRepositoryAdapter(
+    ref.watch(dashboardRepositoryProvider),
+  );
+});
+
+final vaultRepositoryProvider = Provider<IVaultRepository>((ref) {
+  return _DashboardVaultRepositoryAdapter(
+    ref.watch(dashboardRepositoryProvider),
+  );
+});
+
+final chatRepositoryProvider = Provider<IChatRepository>((ref) {
+  return _DashboardChatRepositoryAdapter(
+    ref.watch(dashboardRepositoryProvider),
+  );
+});
+
+class _DashboardTaskRepositoryAdapter implements ITaskRepository {
+  final DashboardRepository _repository;
+  const _DashboardTaskRepositoryAdapter(this._repository);
+
+  @override
+  Stream<List<TaskItem>> watchTasks() => _repository.watchTasks();
+
+  @override
+  Future<void> saveTask(TaskItem task) => _repository.saveTask(task);
+
+  @override
+  Future<void> deleteTask(String id) => _repository.deleteTask(id);
+}
+
+class _DashboardCalendarRepositoryAdapter implements ICalendarRepository {
+  final DashboardRepository _repository;
+  const _DashboardCalendarRepositoryAdapter(this._repository);
+
+  @override
+  Stream<List<CalendarEvent>> watchEvents() => _repository.watchEvents();
+
+  @override
+  Future<void> saveEvent(CalendarEvent event) => _repository.saveEvent(event);
+
+  @override
+  Future<void> deleteEvent(String id) => _repository.deleteEvent(id);
+}
+
+class _DashboardVaultRepositoryAdapter implements IVaultRepository {
+  final DashboardRepository _repository;
+  const _DashboardVaultRepositoryAdapter(this._repository);
+
+  @override
+  Stream<List<VaultItem>> watchVaultItems() => _repository.watchVaultItems();
+
+  @override
+  Future<void> saveVaultItem(VaultItem item) => _repository.saveVaultItem(item);
+
+  @override
+  Future<void> deleteVaultItem(String id) => _repository.deleteVaultItem(id);
+}
+
+class _DashboardChatRepositoryAdapter implements IChatRepository {
+  final DashboardRepository _repository;
+  const _DashboardChatRepositoryAdapter(this._repository);
+
+  @override
+  Stream<List<ChatMessage>> watchMessages({String? threadId}) =>
+      _repository.watchMessages(threadId: threadId);
+
+  @override
+  Stream<List<ChatMessage>> watchMessagesForThread(String threadId) =>
+      _repository.watchMessagesForThread(threadId);
+
+  @override
+  Future<void> saveMessage(ChatMessage message) =>
+      _repository.saveMessage(message);
+
+  @override
+  Stream<List<ChatThread>> watchChatThreads() => _repository.watchChatThreads();
+
+  @override
+  Future<void> saveChatThread(ChatThread thread) =>
+      _repository.saveChatThread(thread);
+
+  @override
+  Future<void> deleteChatThread(String threadId) =>
+      _repository.deleteChatThread(threadId);
+
+  @override
+  Future<void> leaveDirectMessageThread({
+    required String threadId,
+    required String userId,
+  }) =>
+      _repository.leaveDirectMessageThread(threadId: threadId, userId: userId);
+
+  @override
+  Future<void> deleteChatThreadAndMessages(String threadId) =>
+      _repository.deleteChatThreadAndMessages(threadId);
+
+  @override
+  Future<void> clearChatMessages(String threadId) =>
+      _repository.clearChatMessages(threadId);
+
+  @override
+  Future<ChatThread> ensureDirectMessageThread({
+    required String localUserId,
+    required String peerUserId,
+  }) => _repository.ensureDirectMessageThread(
+    localUserId: localUserId,
+    peerUserId: peerUserId,
+  );
+}
+
 class DashboardRepository {
   final CrdtService _crdtService;
   final String? _roomName;
-  final HybridTimeService _hybridTimeService;
+  late final TaskRepository _taskRepository;
+  late final CalendarRepository _calendarRepository;
+  late final VaultRepository _vaultRepository;
+  late final ChatRepository _chatRepository;
 
   DashboardRepository(
     this._crdtService,
     this._roomName,
-    this._hybridTimeService,
-  );
+    HybridTimeService hybridTimeService,
+  ) {
+    _taskRepository = TaskRepository(_crdtService, _roomName);
+    _calendarRepository = CalendarRepository(_crdtService, _roomName);
+    _vaultRepository = VaultRepository(_crdtService, _roomName);
+    _chatRepository = ChatRepository(
+      _crdtService,
+      _roomName,
+      hybridTimeService,
+    );
+  }
 
   AppDatabase? get _db =>
       _roomName != null ? _crdtService.getDatabase(_roomName) : null;
 
   String? get currentRoomName => _roomName;
+  ITaskRepository get tasks => _taskRepository;
+  ICalendarRepository get calendar => _calendarRepository;
+  IVaultRepository get vault => _vaultRepository;
+  IChatRepository get chat => _chatRepository;
 
-  Stream<List<TaskItem>> watchTasks() {
-    final db = _db;
-    if (db == null) return Stream.value([]);
-    return (db.select(
-      db.tasks,
-    )..where((t) => t.isDeleted.equals(0))).watch().map((rows) {
-      return rows
-          .map((row) {
-            try {
-              return TaskItemMapper.fromJson(row.value);
-            } catch (e) {
-              Log.e(
-                '[DashboardRepository]',
-                'Error decoding TaskItem: ${row.value}',
-                e,
-              );
-              return null;
-            }
-          })
-          .whereType<TaskItem>()
-          .toList();
-    });
-  }
+  Stream<List<TaskItem>> watchTasks() => _taskRepository.watchTasks();
+  Future<void> saveTask(TaskItem task) => _taskRepository.saveTask(task);
+  Future<void> deleteTask(String id) => _taskRepository.deleteTask(id);
 
-  Future<void> saveTask(TaskItem task) async {
-    final db = _db;
-    if (db == null) return;
-    await db
-        .into(db.tasks)
-        .insertOnConflictUpdate(
-          TaskEntity(
-            id: task.id,
-            value: jsonEncode(task.toMap()),
-            isDeleted: 0,
-          ),
-        );
-  }
+  Stream<List<CalendarEvent>> watchEvents() =>
+      _calendarRepository.watchEvents();
+  Future<void> saveEvent(CalendarEvent event) =>
+      _calendarRepository.saveEvent(event);
+  Future<void> deleteEvent(String id) => _calendarRepository.deleteEvent(id);
 
-  Future<void> deleteTask(String id) async {
-    final db = _db;
-    final roomName = _roomName;
-    if (db == null || roomName == null) return;
+  Stream<List<VaultItem>> watchVaultItems() =>
+      _vaultRepository.watchVaultItems();
+  Future<void> saveVaultItem(VaultItem item) =>
+      _vaultRepository.saveVaultItem(item);
+  Future<void> deleteVaultItem(String id) =>
+      _vaultRepository.deleteVaultItem(id);
 
-    // Use CRDT delete for proper tombstoning and sync
-    await _crdtService.delete(roomName, id, 'tasks');
-  }
-
-  Stream<List<CalendarEvent>> watchEvents() {
-    final db = _db;
-    if (db == null) return Stream.value([]);
-    return (db.select(
-      db.calendarEvents,
-    )..where((t) => t.isDeleted.equals(0))).watch().map((rows) {
-      return rows
-          .map((row) {
-            try {
-              return CalendarEventMapper.fromJson(row.value);
-            } catch (e) {
-              Log.e('[DashboardRepository]', 'Error decoding CalendarEvent', e);
-              return null;
-            }
-          })
-          .whereType<CalendarEvent>()
-          .toList();
-    });
-  }
-
-  Future<void> saveEvent(CalendarEvent event) async {
-    final db = _db;
-    if (db == null) return;
-    await db
-        .into(db.calendarEvents)
-        .insertOnConflictUpdate(
-          CalendarEventEntity(
-            id: event.id,
-            value: jsonEncode(event.toMap()),
-            isDeleted: 0,
-          ),
-        );
-  }
-
-  Future<void> deleteEvent(String id) async {
-    final db = _db;
-    final roomName = _roomName;
-    if (db == null || roomName == null) return;
-
-    // Use CRDT delete for proper tombstoning and sync
-    await _crdtService.delete(roomName, id, 'calendar_events');
-  }
-
-  Stream<List<VaultItem>> watchVaultItems() {
-    final db = _db;
-    if (db == null) return Stream.value([]);
-    return (db.select(
-      db.vaultItems,
-    )..where((t) => t.isDeleted.equals(0))).watch().map((rows) {
-      return rows
-          .map((row) {
-            try {
-              final jsonStr = row.value;
-              return VaultItemMapper.fromJson(jsonStr);
-            } catch (e) {
-              Log.e('[DashboardRepository]', 'Error decoding VaultItem', e);
-              return null;
-            }
-          })
-          .whereType<VaultItem>()
-          .toList();
-    });
-  }
-
-  Future<void> saveVaultItem(VaultItem item) async {
-    final db = _db;
-    if (db == null) return;
-    await db
-        .into(db.vaultItems)
-        .insertOnConflictUpdate(
-          VaultItemEntity(
-            id: item.id,
-            value: jsonEncode(item.toMap()),
-            isDeleted: 0,
-          ),
-        );
-  }
-
-  Future<void> deleteVaultItem(String id) async {
-    final db = _db;
-    final roomName = _roomName;
-    if (db == null || roomName == null) return;
-
-    // Use CRDT delete for proper tombstoning and sync
-    await _crdtService.delete(roomName, id, 'vault_items');
-  }
-
-  Stream<List<ChatMessage>> watchMessages({String? threadId}) {
-    final db = _db;
-    if (db == null) return Stream.value([]);
-    final threadNeedle = threadId == null ? null : '"threadId":"$threadId"';
-    final defaultNeedle = threadId == ChatThread.generalId
-        ? '"threadId":"${ChatMessage.defaultThreadId}"'
-        : null;
-
-    return (db.select(
-      db.chatMessages,
-    )..where((t) => t.isDeleted.equals(0))).watch().map((rows) {
-      final messages = rows
-          .map((row) {
-            final raw = row.value;
-            if (threadNeedle != null &&
-                !raw.contains(threadNeedle) &&
-                (defaultNeedle == null || !raw.contains(defaultNeedle))) {
-              return null;
-            }
-            try {
-              return ChatMessageMapper.fromJson(raw);
-            } catch (e) {
-              Log.e('[DashboardRepository]', 'Error decoding ChatMessage', e);
-              return null;
-            }
-          })
-          .whereType<ChatMessage>()
-          .toList();
-      messages.sort((a, b) {
-        final byPhysical = a.timestamp.millisecondsSinceEpoch.compareTo(
-          b.timestamp.millisecondsSinceEpoch,
-        );
-        if (byPhysical != 0) return byPhysical;
-        return a.logicalTime.compareTo(b.logicalTime);
-      });
-
-      // Causality guard: render replies after their parent when possible.
-      var moved = true;
-      var safety = 0;
-      while (moved && safety < messages.length * 2) {
-        moved = false;
-        safety += 1;
-        final indexById = <String, int>{
-          for (var i = 0; i < messages.length; i++) messages[i].id: i,
-        };
-        for (var i = 0; i < messages.length; i++) {
-          final replyTo = messages[i].replyToMessageId;
-          if (replyTo == null || replyTo.isEmpty) continue;
-          final parentIndex = indexById[replyTo];
-          if (parentIndex == null) continue;
-          if (i < parentIndex) {
-            final msg = messages.removeAt(i);
-            final refreshedParentIndex = indexById[replyTo] ?? parentIndex;
-            final insertAt = min(refreshedParentIndex + 1, messages.length);
-            messages.insert(insertAt, msg);
-            moved = true;
-            break;
-          }
-        }
-      }
-      return messages;
-    });
-  }
-
-  Stream<List<ChatMessage>> watchMessagesForThread(String threadId) {
-    return watchMessages(threadId: threadId);
-  }
-
-  Future<void> saveMessage(ChatMessage message) async {
-    final db = _db;
-    if (db == null) return;
-    await db
-        .into(db.chatMessages)
-        .insertOnConflictUpdate(
-          ChatMessageEntity(
-            id: message.id,
-            value: jsonEncode(message.toMap()),
-            isDeleted: 0,
-          ),
-        );
-  }
-
-  Stream<List<ChatThread>> watchChatThreads() {
-    final db = _db;
-    if (db == null) return Stream.value(const <ChatThread>[]);
-    return (db.select(
-      db.chatThreads,
-    )..where((t) => t.isDeleted.equals(0))).watch().map((rows) {
-      final now = DateTime.now();
-      final threads = rows
-          .map((row) {
-            try {
-              final jsonStr = row.value;
-              return ChatThreadMapper.fromJson(jsonStr);
-            } catch (e) {
-              Log.e('[DashboardRepository]', 'Error decoding ChatThread', e);
-              return null;
-            }
-          })
-          .whereType<ChatThread>()
-          .where(
-            (thread) => !thread.isExpired || thread.id == ChatThread.generalId,
-          )
-          .toList();
-
-      if (!threads.any((thread) => thread.id == ChatThread.generalId)) {
-        threads.add(
-          ChatThread(
-            id: ChatThread.generalId,
-            kind: ChatThread.channelKind,
-            name: 'general',
-            createdBy: '',
-            createdAt: DateTime.fromMillisecondsSinceEpoch(0),
-          ),
-        );
-      }
-
-      threads.removeWhere(
-        (thread) =>
-            thread.expiresAt != null &&
-            now.isAfter(thread.expiresAt!) &&
-            thread.id != ChatThread.generalId,
-      );
-
-      threads.sort((a, b) {
-        if (a.id == ChatThread.generalId) return -1;
-        if (b.id == ChatThread.generalId) return 1;
-        if (a.kind != b.kind) {
-          return a.kind == ChatThread.channelKind ? -1 : 1;
-        }
-        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
-      });
-      return threads;
-    });
-  }
-
-  Future<void> saveChatThread(ChatThread thread) async {
-    final db = _db;
-    if (db == null) return;
-    await db
-        .into(db.chatThreads)
-        .insertOnConflictUpdate(
-          ChatThreadEntity(
-            id: thread.id,
-            value: jsonEncode(thread.toMap()),
-            isDeleted: 0,
-          ),
-        );
-  }
-
-  Future<void> deleteChatThread(String threadId) async {
-    final db = _db;
-    final roomName = _roomName;
-    if (db == null || roomName == null) return;
-
-    // Use CRDT delete for proper tombstoning and sync
-    await _crdtService.delete(roomName, threadId, 'chat_threads');
-  }
-
+  Stream<List<ChatMessage>> watchMessages({String? threadId}) =>
+      _chatRepository.watchMessages(threadId: threadId);
+  Stream<List<ChatMessage>> watchMessagesForThread(String threadId) =>
+      _chatRepository.watchMessagesForThread(threadId);
+  Future<void> saveMessage(ChatMessage message) =>
+      _chatRepository.saveMessage(message);
+  Stream<List<ChatThread>> watchChatThreads() =>
+      _chatRepository.watchChatThreads();
+  Future<void> saveChatThread(ChatThread thread) =>
+      _chatRepository.saveChatThread(thread);
+  Future<void> deleteChatThread(String threadId) =>
+      _chatRepository.deleteChatThread(threadId);
   Future<void> leaveDirectMessageThread({
     required String threadId,
     required String userId,
-  }) async {
-    final db = _db;
-    if (db == null || userId.isEmpty) return;
-    final row =
-        await (db.select(db.chatThreads)
-              ..where((t) => t.id.equals(threadId))
-              ..where((t) => t.isDeleted.equals(0)))
-            .getSingleOrNull();
-    if (row == null) return;
-    final raw = row.value;
-
-    ChatThread thread;
-    try {
-      thread = ChatThreadMapper.fromJson(raw);
-    } catch (_) {
-      return;
-    }
-
-    if (!thread.isDm) return;
-    if (!thread.participantIds.contains(userId)) return;
-
-    final nextParticipants = thread.participantIds
-        .where((id) => id != userId)
-        .toList();
-    if (nextParticipants.isEmpty) {
-      await deleteChatThreadAndMessages(threadId);
-      return;
-    }
-
-    await saveChatThread(thread.copyWith(participantIds: nextParticipants));
-  }
-
-  Future<void> deleteChatThreadAndMessages(String threadId) async {
-    final db = _db;
-    final roomName = _roomName;
-    if (db == null || roomName == null) return;
-
-    final rows = await db.select(db.chatMessages).get();
-
-    for (final row in rows) {
-      final value = row.value;
-      if (value.isEmpty) continue;
-      try {
-        final message = ChatMessageMapper.fromJson(value);
-        if (message.threadId != threadId) continue;
-        // Use CRDT delete for proper tombstoning and sync
-        await _crdtService.delete(roomName, row.id, 'chat_messages');
-      } catch (_) {}
-    }
-
-    await deleteChatThread(threadId);
-  }
-
-  Future<void> clearChatMessages(String threadId) async {
-    final db = _db;
-    final roomName = _roomName;
-    if (db == null || roomName == null) return;
-
-    final rows = await db.select(db.chatMessages).get();
-
-    for (final row in rows) {
-      final value = row.value;
-      if (value.isEmpty) continue;
-      try {
-        final message = ChatMessageMapper.fromJson(value);
-        if (message.threadId != threadId) continue;
-        // Use CRDT delete for proper tombstoning and sync
-        await _crdtService.delete(roomName, row.id, 'chat_messages');
-      } catch (_) {}
-    }
-  }
-
+  }) => _chatRepository.leaveDirectMessageThread(
+    threadId: threadId,
+    userId: userId,
+  );
+  Future<void> deleteChatThreadAndMessages(String threadId) =>
+      _chatRepository.deleteChatThreadAndMessages(threadId);
+  Future<void> clearChatMessages(String threadId) =>
+      _chatRepository.clearChatMessages(threadId);
   Future<ChatThread> ensureDirectMessageThread({
     required String localUserId,
     required String peerUserId,
-  }) async {
-    final db = _db;
-    if (db == null) {
-      return ChatThread(
-        id: _buildDmThreadId(localUserId, peerUserId),
-        kind: ChatThread.dmKind,
-        name: 'Direct message',
-        participantIds: [localUserId, peerUserId]..sort(),
-        createdBy: localUserId,
-        createdAt: _hybridTimeService.getAdjustedTimeLocal(),
-        logicalTime: _hybridTimeService.nextLogicalTime(),
-      );
-    }
-
-    final threadId = _buildDmThreadId(localUserId, peerUserId);
-    final row =
-        await (db.select(db.chatThreads)
-              ..where((t) => t.id.equals(threadId))
-              ..where((t) => t.isDeleted.equals(0)))
-            .getSingleOrNull();
-    if (row != null) {
-      return ChatThreadMapper.fromJson(row.value);
-    }
-
-    final members = [localUserId, peerUserId]..sort();
-    final thread = ChatThread(
-      id: threadId,
-      kind: ChatThread.dmKind,
-      name: 'Direct message',
-      participantIds: members,
-      createdBy: localUserId,
-      createdAt: _hybridTimeService.getAdjustedTimeLocal(),
-      logicalTime: _hybridTimeService.nextLogicalTime(),
-    );
-    await saveChatThread(thread);
-    return thread;
-  }
-
-  String _buildDmThreadId(String userA, String userB) {
-    final members = [userA, userB]
-      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-    return 'chat:dm:${Uri.encodeComponent(members[0])}:${Uri.encodeComponent(members[1])}';
-  }
+  }) => _chatRepository.ensureDirectMessageThread(
+    localUserId: localUserId,
+    peerUserId: peerUserId,
+  );
 
   Stream<List<UserProfile>> watchUserProfiles() {
     final db = _db;

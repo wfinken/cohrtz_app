@@ -7,6 +7,7 @@ import 'package:cohortz/app/di/app_providers.dart';
 import 'package:cohortz/shared/config/app_config.dart';
 import 'package:cohortz/shared/security/encryption_service.dart';
 import 'package:cohortz/shared/security/identity_service.dart';
+import 'package:cohortz/shared/security/secure_storage_service.dart';
 import 'package:cohortz/shared/security/security_service.dart';
 import 'package:cohortz/shared/services/background_service.dart';
 import 'package:cohortz/shared/utils/logging_service.dart';
@@ -38,7 +39,8 @@ Future<ProviderScope> createAppProviderScope({
   );
   final crdtService = CrdtService();
   final identityService = IdentityService();
-  final securityService = SecurityService();
+  final secureStorageService = SecureStorageService();
+  final securityService = SecurityService(secureStorage: secureStorageService);
   final encryptionService = EncryptionService();
 
   Log.i('Main', 'Initializing TransferStatsRepository...');
@@ -67,6 +69,7 @@ Future<ProviderScope> createAppProviderScope({
     overrides: [
       crdtServiceProvider.overrideWithValue(crdtService),
       identityServiceProvider.overrideWith((ref) => identityService),
+      secureStorageServiceProvider.overrideWithValue(secureStorageService),
       securityServiceProvider.overrideWithValue(securityService),
       encryptionServiceProvider.overrideWithValue(encryptionService),
       transferStatsRepositoryProvider.overrideWithValue(transferStatsRepo),
