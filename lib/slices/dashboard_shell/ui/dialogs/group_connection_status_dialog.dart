@@ -36,6 +36,7 @@ class _GroupConnectionStatusDialogState
 
   Timer? _metricsTimer;
   StreamSubscription<SyncDiagnosticEvent>? _diagnosticSubscription;
+  late final ProviderSubscription<String?> _activeRoomSubscription;
 
   int _pingMs = 52;
   int _sentBytes = 0;
@@ -59,6 +60,20 @@ class _GroupConnectionStatusDialogState
     _roomNameAtOpen = ref.read(syncServiceProvider).currentRoomName ?? '';
     _hydrateDiagnostics(_roomNameAtOpen);
     _addActivity('Connection panel opened');
+
+    _activeRoomSubscription = ref.listenManual<String?>(
+      syncServiceProvider.select((s) => s.currentRoomName),
+      (previous, next) {
+        final nextRoom = next ?? '';
+        if (!mounted || nextRoom.isEmpty || nextRoom == _roomNameAtOpen) {
+          return;
+        }
+
+        setState(() {
+          _switchRoomContext(nextRoom);
+        });
+      },
+    );
 
     _diagnosticSubscription = SyncDiagnostics.stream.listen((event) {
       if (!mounted) return;
@@ -84,6 +99,7 @@ class _GroupConnectionStatusDialogState
   void dispose() {
     _metricsTimer?.cancel();
     _diagnosticSubscription?.cancel();
+    _activeRoomSubscription.close();
     super.dispose();
   }
 
@@ -1111,6 +1127,7 @@ class _GroupConnectionStatusDialogState
     // This works fine as long as we don't double-add existing logs to the total.
 
     final events = SyncDiagnostics.recentForRoom(roomName, limit: 200);
+    _lastSyncAt = _latestSyncTimestamp(events);
     if (events.isEmpty) {
       _logs.add(
         _DiagnosticEntry(
@@ -1176,9 +1193,31 @@ class _GroupConnectionStatusDialogState
       }
     }
 
-    if (event.kind == SyncDiagnosticKind.sync) {
+    if (_isSyncTimestampEvent(event)) {
       _lastSyncAt = event.timestamp;
     }
+  }
+
+  void _switchRoomContext(String roomName) {
+    _roomNameAtOpen = roomName;
+    _logs.clear();
+    _activity.clear();
+    _lastSyncAt = null;
+    _hydrateDiagnostics(roomName);
+  }
+
+  DateTime? _latestSyncTimestamp(List<SyncDiagnosticEvent> events) {
+    for (final event in events.reversed) {
+      if (_isSyncTimestampEvent(event)) {
+        return event.timestamp;
+      }
+    }
+    return null;
+  }
+
+  bool _isSyncTimestampEvent(SyncDiagnosticEvent event) {
+    return event.kind == SyncDiagnosticKind.sync ||
+        event.kind == SyncDiagnosticKind.data;
   }
 
   _DiagnosticEntry _entryFromDiagnosticEvent(SyncDiagnosticEvent event) {
