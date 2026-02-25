@@ -268,7 +268,7 @@ class GroupDrawer extends ConsumerWidget {
               children: [
                 GroupDrawerItem(
                   icon: isConnected ? Icons.wifi_tethering : Icons.wifi_off,
-                  label: 'Connection Status',
+                  label: 'Stats',
                   isSelected: false,
                   onTap: () {
                     showDialog(

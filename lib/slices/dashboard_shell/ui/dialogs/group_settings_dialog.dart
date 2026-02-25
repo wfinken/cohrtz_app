@@ -25,18 +25,6 @@ class _GroupSettingsDialogState extends ConsumerState<GroupSettingsDialog> {
   String _avatarBase64 = '';
   bool _saving = false;
 
-  String _formatSize(int bytes) {
-    if (bytes <= 0) return '0 B';
-    const suffixes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    var i = (bytes > 0) ? (bytes.toString().length - 1) ~/ 3 : 0;
-    if (i >= suffixes.length) i = suffixes.length - 1;
-
-    // Use higher precision for larger units to show small changes
-    var precision = i > 1 ? 2 : 1;
-    var s = (bytes / (1 << (i * 10))).toStringAsFixed(precision);
-    return '$s ${suffixes[i]}';
-  }
-
   @override
   void initState() {
     super.initState();
@@ -229,106 +217,6 @@ class _GroupSettingsDialogState extends ConsumerState<GroupSettingsDialog> {
                 fontSize: 12,
               ),
             ),
-            const SizedBox(height: 16),
-            const Divider(),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Text(
-                  'Local Storage',
-                  style: TextStyle(
-                    color: Theme.of(context).hintColor,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const Spacer(),
-                Consumer(
-                  builder: (context, ref, child) {
-                    final roomName =
-                        ref.watch(
-                          syncServiceProvider.select((s) => s.currentRoomName),
-                        ) ??
-                        '';
-                    debugPrint(
-                      '[GroupSettingsDialog] Local Storage Consumer rebuilding for $roomName',
-                    );
-                    final storageAsync = ref.watch(
-                      roomStorageBreakdownProvider(roomName),
-                    );
-
-                    return storageAsync.when(
-                      data: (breakdown) => Text(
-                        _formatSize(breakdown.totalBytes),
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurface,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      loading: () => const SizedBox(
-                        width: 12,
-                        height: 12,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                      error: (e, s) => Text(
-                        '0 B',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurface,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
-            Text(
-              'Space used by this group on your device.',
-              style: TextStyle(
-                color: Theme.of(context).hintColor,
-                fontSize: 12,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Consumer(
-              builder: (context, ref, child) {
-                final roomName =
-                    ref.watch(
-                      syncServiceProvider.select((s) => s.currentRoomName),
-                    ) ??
-                    '';
-                final storageAsync = ref.watch(
-                  roomStorageBreakdownProvider(roomName),
-                );
-
-                return storageAsync.when(
-                  data: (breakdown) => Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildStorageBreakdownRow(
-                        context,
-                        'CRDT Database',
-                        breakdown.crdtBytes,
-                      ),
-                      _buildStorageBreakdownRow(
-                        context,
-                        'Dashboard Layout',
-                        breakdown.dashboardBytes,
-                      ),
-                      _buildStorageBreakdownRow(
-                        context,
-                        'Vault Packet Store',
-                        breakdown.packetStoreBytes,
-                      ),
-                    ],
-                  ),
-                  loading: () => const SizedBox.shrink(),
-                  error: (e, s) => const SizedBox.shrink(),
-                );
-              },
-            ),
-            const SizedBox(height: 24),
-            const SizedBox(height: 8),
             const SizedBox(height: 32),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
@@ -359,37 +247,6 @@ class _GroupSettingsDialogState extends ConsumerState<GroupSettingsDialog> {
   }
 
   bool _initialized = false;
-
-  Widget _buildStorageBreakdownRow(
-    BuildContext context,
-    String label,
-    int bytes,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: TextStyle(
-                color: Theme.of(context).hintColor,
-                fontSize: 12,
-              ),
-            ),
-          ),
-          Text(
-            _formatSize(bytes),
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurface,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   String _getTypeDescription(GroupType type) {
     switch (type) {

@@ -46,6 +46,7 @@ class _GroupConnectionStatusDialogState
   bool _isReconnecting = false;
   bool _isAdvancingEpoch = false;
   bool _isSessionPaused = false;
+  bool _advancedMode = false;
 
   int? _lastRemoteParticipants;
   DateTime? _lastSyncAt;
@@ -177,7 +178,7 @@ class _GroupConnectionStatusDialogState
     );
 
     final title = switch (_view) {
-      _ConnectionPanelView.status => 'Connection Status',
+      _ConnectionPanelView.status => 'Stats',
       _ConnectionPanelView.protocol => 'Security Protocol',
       _ConnectionPanelView.log => 'Diagnostic Log',
       _ConnectionPanelView.network => 'Network Topology',
@@ -293,6 +294,7 @@ class _GroupConnectionStatusDialogState
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
+    final storageAsync = ref.watch(roomStorageBreakdownProvider(roomName));
 
     final statusColor = switch (connectionState) {
       _ConnectionState.connected => colorScheme.tertiary,
@@ -324,314 +326,459 @@ class _GroupConnectionStatusDialogState
         ? !_isSynchronizing
         : !_isReconnecting;
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainerLow,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: colorScheme.outlineVariant),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(14),
-                            gradient: LinearGradient(
-                              colors: [
-                                colorScheme.primary,
-                                colorScheme.primary.withValues(alpha: 0.72),
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                          ),
-                          child: Icon(
-                            Icons.stacked_bar_chart,
-                            color: colorScheme.onPrimary,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                groupName,
-                                style: textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 2),
-                              Wrap(
-                                crossAxisAlignment: WrapCrossAlignment.center,
-                                spacing: 8,
-                                children: [
-                                  StatusChip(
-                                    label: statusLabel,
-                                    color: statusColor,
-                                    icon:
-                                        connectionState ==
-                                            _ConnectionState.connected
-                                        ? Icons.wifi
-                                        : connectionState ==
-                                              _ConnectionState.connecting
-                                        ? Icons.sync
-                                        : Icons.wifi_off,
-                                  ),
-                                  Text(
-                                    statusSubtitle,
-                                    style: textTheme.bodySmall,
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        Icon(Icons.public, color: colorScheme.onSurfaceVariant),
-                      ],
-                    ),
-                    if (roomName.isNotEmpty) ...[
-                      const SizedBox(height: 10),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          roomName,
-                          style: textTheme.bodySmall,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 14),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _MetricTile(
-                            label: 'NODES ONLINE',
-                            value: '$onlinePeers',
-                            subtitle: '/ $totalPeers',
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _MetricTile(
-                            label: 'LAST SYNC',
-                            value: _lastSyncAt == null
-                                ? 'Never'
-                                : _formatRelative(_lastSyncAt!),
-                            subtitle: '',
-                            highlight: _lastSyncAt != null,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.north_east,
-                          size: 16,
-                          color: colorScheme.tertiary,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          '${_bytesToMb(_sentBytes).toStringAsFixed(2)} MB',
-                          style: textTheme.bodySmall,
-                        ),
-                        const SizedBox(width: 18),
-                        Icon(
-                          Icons.south_west,
-                          size: 16,
-                          color: colorScheme.primary,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          '${_bytesToMb(_receivedBytes).toStringAsFixed(2)} MB',
-                          style: textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: canRunPrimary
-                      ? () {
-                          if (connectionState == _ConnectionState.connected) {
-                            _handleSynchronize();
-                          } else {
-                            _handleReconnect();
-                          }
-                        }
-                      : null,
-                  icon: _buildBusyIcon(
-                    running: _isSynchronizing || _isReconnecting,
-                    icon: primaryIcon,
-                  ),
-                  label: Text(primaryLabel),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: (_isReconnecting || _isSynchronizing)
-                          ? null
-                          : () {
-                              if (connectionState ==
-                                      _ConnectionState.connected ||
-                                  connectionState ==
-                                      _ConnectionState.connecting) {
-                                _handleDisconnect();
-                              } else {
-                                _handleReconnect();
-                              }
-                            },
-                      icon: Icon(
-                        connectionState == _ConnectionState.connected
-                            ? Icons.wifi_tethering_off
-                            : Icons.refresh,
-                        size: 18,
-                      ),
-                      label: Text(
-                        connectionState == _ConnectionState.connected
-                            ? 'Disconnect'
-                            : 'Reconnect',
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () {
-                        setState(() => _view = _ConnectionPanelView.protocol);
-                      },
-                      icon: const Icon(Icons.shield_outlined, size: 18),
-                      label: const Text('Protocol'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            value: _advancedMode,
+            onChanged: (value) {
+              setState(() => _advancedMode = value);
+            },
+            title: const Text('Advanced mode'),
+            subtitle: const Text(
+              'Show detailed connection diagnostics and storage breakdown.',
+            ),
           ),
-        ),
-        Flexible(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: colorScheme.outlineVariant),
+            ),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('RECENT ACTIVITY', style: textTheme.labelSmall),
-                const SizedBox(height: 8),
-                ..._activity.map((item) {
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
+                Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
                       decoration: BoxDecoration(
-                        color: colorScheme.surfaceContainerLow,
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: colorScheme.outlineVariant),
+                        gradient: LinearGradient(
+                          colors: [
+                            colorScheme.primary,
+                            colorScheme.primary.withValues(alpha: 0.72),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
                       ),
-                      child: Row(
+                      child: Icon(
+                        Icons.stacked_bar_chart,
+                        color: colorScheme.onPrimary,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Container(
-                            width: 6,
-                            height: 6,
-                            decoration: BoxDecoration(
-                              color: colorScheme.primary,
-                              shape: BoxShape.circle,
+                          Text(
+                            groupName,
+                            style: textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
                             ),
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(item.message, style: textTheme.bodyMedium),
-                                Text(
-                                  _formatRelative(item.timestamp),
-                                  style: textTheme.bodySmall,
-                                ),
-                              ],
-                            ),
+                          const SizedBox(height: 2),
+                          Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 8,
+                            children: [
+                              StatusChip(
+                                label: statusLabel,
+                                color: statusColor,
+                                icon:
+                                    connectionState ==
+                                        _ConnectionState.connected
+                                    ? Icons.wifi
+                                    : connectionState ==
+                                          _ConnectionState.connecting
+                                    ? Icons.sync
+                                    : Icons.wifi_off,
+                              ),
+                              Text(statusSubtitle, style: textTheme.bodySmall),
+                            ],
                           ),
                         ],
                       ),
                     ),
-                  );
-                }),
-                if (_activity.isEmpty)
-                  Text('No recent activity yet.', style: textTheme.bodySmall),
-                if (inviteCode != null) ...[
+                    Icon(Icons.public, color: colorScheme.onSurfaceVariant),
+                  ],
+                ),
+                if (roomName.isNotEmpty) ...[
                   const SizedBox(height: 10),
-                  Text('Invite code: $inviteCode', style: textTheme.bodySmall),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      roomName,
+                      style: textTheme.bodySmall,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _MetricTile(
+                        label: 'NODES ONLINE',
+                        value: '$onlinePeers',
+                        subtitle: '/ $totalPeers',
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _MetricTile(
+                        label: 'LAST SYNC',
+                        value: _lastSyncAt == null
+                            ? 'Never'
+                            : _formatRelative(_lastSyncAt!),
+                        subtitle: '',
+                        highlight: _lastSyncAt != null,
+                      ),
+                    ),
+                  ],
+                ),
+                if (_advancedMode) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.north_east,
+                        size: 16,
+                        color: colorScheme.tertiary,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${_bytesToMb(_sentBytes).toStringAsFixed(2)} MB',
+                        style: textTheme.bodySmall,
+                      ),
+                      const SizedBox(width: 18),
+                      Icon(
+                        Icons.south_west,
+                        size: 16,
+                        color: colorScheme.primary,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${_bytesToMb(_receivedBytes).toStringAsFixed(2)} MB',
+                        style: textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
                 ],
               ],
             ),
           ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          child: Row(
-            children: [
-              TextButton.icon(
-                onPressed: () {
-                  setState(() => _view = _ConnectionPanelView.log);
-                },
-                icon: const Icon(Icons.terminal, size: 16),
-                label: const Text('View Diagnostic Log'),
+          const SizedBox(height: 16),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: colorScheme.outlineVariant),
+            ),
+            child: storageAsync.when(
+              data: (breakdown) => Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'Local Storage',
+                        style: textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        _formatStorageSize(breakdown.totalBytes),
+                        style: textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Space used by this group on your device.',
+                    style: textTheme.bodySmall,
+                  ),
+                  if (_advancedMode) ...[
+                    const SizedBox(height: 10),
+                    _buildStorageBreakdownRow(
+                      context,
+                      'CRDT Database',
+                      breakdown.crdtBytes,
+                    ),
+                    _buildStorageBreakdownRow(
+                      context,
+                      'Dashboard Layout',
+                      breakdown.dashboardBytes,
+                    ),
+                    _buildStorageBreakdownRow(
+                      context,
+                      'Vault Packet Store',
+                      breakdown.packetStoreBytes,
+                    ),
+                  ],
+                ],
               ),
-              const SizedBox(width: 6),
-              TextButton.icon(
-                onPressed: () {
-                  setState(() => _view = _ConnectionPanelView.network);
-                },
-                icon: const Icon(Icons.hub_outlined, size: 16),
-                label: const Text('Network'),
+              loading: () => Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'Local Storage',
+                        style: textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const Spacer(),
+                      const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Space used by this group on your device.',
+                    style: textTheme.bodySmall,
+                  ),
+                ],
               ),
-            ],
+              error: (_, __) => Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'Local Storage',
+                        style: textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '0 B',
+                        style: textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Space used by this group on your device.',
+                    style: textTheme.bodySmall,
+                  ),
+                  if (_advancedMode) ...[
+                    const SizedBox(height: 10),
+                    _buildStorageBreakdownRow(context, 'CRDT Database', 0),
+                    _buildStorageBreakdownRow(context, 'Dashboard Layout', 0),
+                    _buildStorageBreakdownRow(context, 'Vault Packet Store', 0),
+                  ],
+                ],
+              ),
+            ),
           ),
-        ),
-      ],
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: canRunPrimary
+                  ? () {
+                      if (connectionState == _ConnectionState.connected) {
+                        _handleSynchronize();
+                      } else {
+                        _handleReconnect();
+                      }
+                    }
+                  : null,
+              icon: _buildBusyIcon(
+                running: _isSynchronizing || _isReconnecting,
+                icon: primaryIcon,
+              ),
+              label: Text(primaryLabel),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (_advancedMode)
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: (_isReconnecting || _isSynchronizing)
+                        ? null
+                        : () {
+                            if (connectionState == _ConnectionState.connected ||
+                                connectionState ==
+                                    _ConnectionState.connecting) {
+                              _handleDisconnect();
+                            } else {
+                              _handleReconnect();
+                            }
+                          },
+                    icon: Icon(
+                      connectionState == _ConnectionState.connected
+                          ? Icons.wifi_tethering_off
+                          : Icons.refresh,
+                      size: 18,
+                    ),
+                    label: Text(
+                      connectionState == _ConnectionState.connected
+                          ? 'Disconnect'
+                          : 'Reconnect',
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      setState(() => _view = _ConnectionPanelView.protocol);
+                    },
+                    icon: const Icon(Icons.shield_outlined, size: 18),
+                    label: const Text('Protocol'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: (_isReconnecting || _isSynchronizing)
+                    ? null
+                    : () {
+                        if (connectionState == _ConnectionState.connected ||
+                            connectionState == _ConnectionState.connecting) {
+                          _handleDisconnect();
+                        } else {
+                          _handleReconnect();
+                        }
+                      },
+                icon: Icon(
+                  connectionState == _ConnectionState.connected
+                      ? Icons.wifi_tethering_off
+                      : Icons.refresh,
+                  size: 18,
+                ),
+                label: Text(
+                  connectionState == _ConnectionState.connected
+                      ? 'Disconnect'
+                      : 'Reconnect',
+                ),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+              ),
+            ),
+          if (_advancedMode) ...[
+            const SizedBox(height: 18),
+            Text('RECENT ACTIVITY', style: textTheme.labelSmall),
+            const SizedBox(height: 8),
+            ..._activity.map((item) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colorScheme.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: colorScheme.outlineVariant),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: colorScheme.primary,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(item.message, style: textTheme.bodyMedium),
+                            Text(
+                              _formatRelative(item.timestamp),
+                              style: textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+            if (_activity.isEmpty)
+              Text('No recent activity yet.', style: textTheme.bodySmall),
+            if (inviteCode != null) ...[
+              const SizedBox(height: 10),
+              Text('Invite code: $inviteCode', style: textTheme.bodySmall),
+            ],
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                TextButton.icon(
+                  onPressed: () {
+                    setState(() => _view = _ConnectionPanelView.log);
+                  },
+                  icon: const Icon(Icons.terminal, size: 16),
+                  label: const Text('View Diagnostic Log'),
+                ),
+                const SizedBox(width: 6),
+                TextButton.icon(
+                  onPressed: () {
+                    setState(() => _view = _ConnectionPanelView.network);
+                  },
+                  icon: const Icon(Icons.hub_outlined, size: 16),
+                  label: const Text('Network'),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -1275,6 +1422,40 @@ class _GroupConnectionStatusDialogState
     if (bytes < 1024) return '${bytes}B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)}KB';
     return '${(bytes / (1024 * 1024)).toStringAsFixed(2)}MB';
+  }
+
+  String _formatStorageSize(int bytes) {
+    if (bytes <= 0) return '0 B';
+    const suffixes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    var i = (bytes.toString().length - 1) ~/ 3;
+    if (i >= suffixes.length) i = suffixes.length - 1;
+
+    final precision = i > 1 ? 2 : 1;
+    final size = (bytes / (1 << (i * 10))).toStringAsFixed(precision);
+    return '$size ${suffixes[i]}';
+  }
+
+  Widget _buildStorageBreakdownRow(
+    BuildContext context,
+    String label,
+    int bytes,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(label, style: Theme.of(context).textTheme.bodySmall),
+          ),
+          Text(
+            _formatStorageSize(bytes),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+    );
   }
 
   double _bytesToMb(int bytes) => bytes / (1024 * 1024);
