@@ -15,9 +15,11 @@ import 'package:cohortz/slices/permissions_feature/state/logical_group_providers
 import 'package:cohortz/slices/permissions_feature/ui/widgets/visibility_group_selector.dart';
 import '../../../../app/di/app_providers.dart';
 import 'package:cohortz/slices/dashboard_shell/models/system_model.dart';
+import 'package:cohortz/slices/dashboard_shell/ui/widgets/ghost_add_button.dart';
 import 'package:cohortz/slices/dashboard_shell/ui/widgets/skeleton_loader.dart';
 import '../dialogs/add_vault_dialog.dart';
-import 'package:cohortz/slices/dashboard_shell/ui/widgets/ghost_add_button.dart';
+
+import '../../../../shared/theme/tokens/app_shape_tokens.dart';
 
 class VaultWidget extends ConsumerStatefulWidget {
   const VaultWidget({super.key});
@@ -303,7 +305,7 @@ class _FilterButton extends StatelessWidget {
       message: tooltip,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: context.appBorderRadius(8),
         child: Container(
           width: 32,
           height: 32,
@@ -311,7 +313,7 @@ class _FilterButton extends StatelessWidget {
             color: isActive
                 ? Theme.of(context).colorScheme.primaryContainer
                 : Theme.of(context).cardColor,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: context.appBorderRadius(8),
             border: Border.all(
               color: isActive
                   ? Theme.of(context).colorScheme.primary
@@ -368,7 +370,7 @@ class _VaultItemTileState extends ConsumerState<_VaultItemTile> {
           color: _isHovering
               ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.05)
               : null,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: context.appBorderRadius(8),
         ),
         child: Row(
           children: [
@@ -376,7 +378,7 @@ class _VaultItemTileState extends ConsumerState<_VaultItemTile> {
               child: InkWell(
                 onTap: widget.canInteractVault ? _copyToClipboard : null,
                 onLongPress: widget.canDeleteVault ? _confirmDelete : null,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: context.appBorderRadius(8),
                 child: Row(
                   children: [
                     Icon(

@@ -11,7 +11,7 @@ import '../../../../slices/permissions_core/permission_providers.dart';
 import '../../../../slices/permissions_core/permission_utils.dart';
 import '../../../../slices/permissions_core/visibility_acl.dart';
 import '../../../../app/di/app_providers.dart';
-import '../../../../shared/theme/tokens/app_theme.dart';
+import '../../../../shared/theme/tokens/app_shape_tokens.dart';
 import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
 import 'package:cohortz/slices/dashboard_shell/models/dashboard_models.dart';
 import 'package:cohortz/slices/dashboard_shell/models/user_model.dart';
@@ -148,7 +148,9 @@ class _AddTaskDialogState extends ConsumerState<AddTaskDialog> {
                           ),
                         ),
                         borderRadius: BorderRadius.vertical(
-                          bottom: Radius.circular(AppTheme.dialogRadius),
+                          bottom: Radius.circular(
+                            appShapeTokensOf(context).dialogRadius,
+                          ),
                         ),
                       ),
                       child: _buildCreateButton(hasPermission),
@@ -289,7 +291,7 @@ class _AddTaskDialogState extends ConsumerState<AddTaskDialog> {
           color: isSelected
               ? theme.colorScheme.primary
               : theme.colorScheme.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: context.appBorderRadius(),
           border: Border.all(
             color: isSelected ? theme.colorScheme.primary : theme.dividerColor,
           ),
@@ -380,7 +382,7 @@ class _AddTaskDialogState extends ConsumerState<AddTaskDialog> {
         Container(
           decoration: BoxDecoration(
             color: theme.colorScheme.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: context.appBorderRadius(),
             border: Border.all(color: theme.dividerColor),
           ),
           child: Column(
@@ -582,7 +584,9 @@ class _AddTaskDialogState extends ConsumerState<AddTaskDialog> {
                       height: 40,
                       decoration: BoxDecoration(
                         color: theme.colorScheme.surfaceContainerLowest,
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(
+                          context.appRadius(),
+                        ),
                       ),
                       child: Row(
                         children: [
@@ -655,7 +659,7 @@ class _AddTaskDialogState extends ConsumerState<AddTaskDialog> {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: isSelected ? theme.colorScheme.primary : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: context.appBorderRadius(),
           ),
           child: Text(
             priority.label,
@@ -715,15 +719,15 @@ class _AddTaskDialogState extends ConsumerState<AddTaskDialog> {
                 hintText: isLast ? 'Add a step...' : null,
                 hintStyle: TextStyle(color: theme.colorScheme.onSurfaceVariant),
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(context.appRadius()),
                   borderSide: BorderSide(color: theme.dividerColor),
                 ),
                 enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(context.appRadius()),
                   borderSide: BorderSide(color: theme.dividerColor),
                 ),
                 focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(context.appRadius()),
                   borderSide: BorderSide(
                     color: theme.colorScheme.primary,
                     width: 1.5,

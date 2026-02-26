@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../../../../shared/theme/tokens/app_shape_tokens.dart';
 
 class ConnectionJoinView extends StatefulWidget {
   final VoidCallback onBack;
@@ -65,7 +66,7 @@ class _ConnectionJoinViewState extends State<ConnectionJoinView> {
           backgroundColor: colorScheme.surface,
           surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: context.appBorderRadius(16),
             side: BorderSide(color: colorScheme.outline.withValues(alpha: 0.5)),
           ),
           child: Container(
@@ -139,13 +140,13 @@ class _ConnectionJoinViewState extends State<ConnectionJoinView> {
                     fillColor: colorScheme.surfaceContainerLow,
                     contentPadding: const EdgeInsets.all(16),
                     enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: context.appBorderRadius(12),
                       borderSide: BorderSide(
                         color: colorScheme.outline.withValues(alpha: 0.3),
                       ),
                     ),
                     focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: context.appBorderRadius(12),
                       borderSide: BorderSide(
                         color: colorScheme.primary,
                         width: 1.5,
@@ -187,7 +188,7 @@ class _ConnectionJoinViewState extends State<ConnectionJoinView> {
                         padding: const EdgeInsets.symmetric(horizontal: 4),
                         decoration: BoxDecoration(
                           color: colorScheme.surfaceContainerLow,
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: context.appBorderRadius(12),
                           border: Border.all(
                             color: colorScheme.outline.withValues(alpha: 0.3),
                           ),
@@ -208,7 +209,7 @@ class _ConnectionJoinViewState extends State<ConnectionJoinView> {
                         padding: const EdgeInsets.symmetric(horizontal: 4),
                         decoration: BoxDecoration(
                           color: colorScheme.surfaceContainerLow,
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: context.appBorderRadius(12),
                           border: Border.all(
                             color: colorScheme.outline.withValues(alpha: 0.3),
                           ),
@@ -231,7 +232,7 @@ class _ConnectionJoinViewState extends State<ConnectionJoinView> {
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: colorScheme.surfaceContainerLow,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: context.appBorderRadius(12),
                   ),
                   child: Row(
                     children: [

@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
 import 'package:cohortz/slices/dashboard_shell/models/user_model.dart';
+
 import '../../../../app/di/app_providers.dart';
+import '../../../../shared/theme/tokens/app_shape_tokens.dart';
 
 class UserSettingsDialog extends ConsumerStatefulWidget {
   const UserSettingsDialog({super.key});
@@ -38,7 +40,7 @@ class _UserSettingsDialogState extends ConsumerState<UserSettingsDialog> {
 
     return Dialog(
       backgroundColor: Theme.of(context).cardColor,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(borderRadius: context.appBorderRadius()),
       child: Container(
         padding: const EdgeInsets.all(24),
         constraints: const BoxConstraints(maxWidth: 400),
@@ -91,15 +93,15 @@ class _UserSettingsDialogState extends ConsumerState<UserSettingsDialog> {
                 filled: true,
                 fillColor: Theme.of(context).colorScheme.surface,
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(context.appRadius()),
                   borderSide: BorderSide(color: Theme.of(context).dividerColor),
                 ),
                 enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(context.appRadius()),
                   borderSide: BorderSide(color: Theme.of(context).dividerColor),
                 ),
                 focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(context.appRadius()),
                   borderSide: BorderSide(
                     color: Theme.of(context).colorScheme.primary,
                   ),

@@ -9,7 +9,7 @@ import '../../../../slices/permissions_core/permission_providers.dart';
 import '../../../../slices/permissions_core/permission_utils.dart';
 import '../../../../slices/permissions_core/visibility_acl.dart';
 import '../../../../app/di/app_providers.dart';
-import '../../../../shared/theme/tokens/app_theme.dart';
+import '../../../../shared/theme/tokens/app_shape_tokens.dart';
 import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
 import 'package:cohortz/slices/dashboard_shell/models/dashboard_models.dart';
 import 'package:cohortz/slices/permissions_feature/state/logical_group_providers.dart';
@@ -133,7 +133,7 @@ class _CreatePollDialogState extends ConsumerState<CreatePollDialog> {
                 ? colorScheme.primary
                 : colorScheme.surfaceContainerHighest,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: context.appBorderRadius(),
               side: BorderSide(
                 color: isSelected
                     ? colorScheme.primary
@@ -141,7 +141,7 @@ class _CreatePollDialogState extends ConsumerState<CreatePollDialog> {
               ),
             ),
             child: InkWell(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: context.appBorderRadius(),
               onTap: isEnabled
                   ? () {
                       setState(() {
@@ -222,7 +222,7 @@ class _CreatePollDialogState extends ConsumerState<CreatePollDialog> {
         theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
       ),
       shape: WidgetStateProperty.all(
-        RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        RoundedRectangleBorder(borderRadius: context.appBorderRadius()),
       ),
       padding: WidgetStateProperty.all(
         const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -247,7 +247,9 @@ class _CreatePollDialogState extends ConsumerState<CreatePollDialog> {
                 vertical: 24,
               ),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppTheme.dialogRadius),
+                borderRadius: BorderRadius.circular(
+                  appShapeTokensOf(context).dialogRadius,
+                ),
               ),
               child: SizedBox(
                 width: 520,
@@ -347,7 +349,9 @@ class _CreatePollDialogState extends ConsumerState<CreatePollDialog> {
                                   ),
                                   decoration: BoxDecoration(
                                     color: colorScheme.surfaceContainerLow,
-                                    borderRadius: BorderRadius.circular(20),
+                                    borderRadius: BorderRadius.circular(
+                                      context.appRadius(),
+                                    ),
                                     border: Border.all(
                                       color: colorScheme.outlineVariant
                                           .withValues(alpha: 0.6),
@@ -361,7 +365,7 @@ class _CreatePollDialogState extends ConsumerState<CreatePollDialog> {
                                           color: colorScheme
                                               .surfaceContainerHighest,
                                           borderRadius: BorderRadius.circular(
-                                            8,
+                                            context.appRadius(),
                                           ),
                                         ),
                                         child: Icon(
@@ -467,7 +471,9 @@ class _CreatePollDialogState extends ConsumerState<CreatePollDialog> {
                                     padding: const EdgeInsets.all(8),
                                     decoration: BoxDecoration(
                                       color: colorScheme.surfaceContainerLow,
-                                      borderRadius: BorderRadius.circular(12),
+                                      borderRadius: BorderRadius.circular(
+                                        context.appRadius(),
+                                      ),
                                       border: Border.all(
                                         color: colorScheme.outlineVariant
                                             .withValues(alpha: 0.6),
@@ -555,7 +561,9 @@ class _CreatePollDialogState extends ConsumerState<CreatePollDialog> {
                           top: BorderSide(color: colorScheme.outlineVariant),
                         ),
                         borderRadius: BorderRadius.vertical(
-                          bottom: Radius.circular(AppTheme.dialogRadius),
+                          bottom: Radius.circular(
+                            appShapeTokensOf(context).dialogRadius,
+                          ),
                         ),
                       ),
                       child: Row(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../../../../shared/theme/tokens/app_shape_tokens.dart';
 
 class ConnectionCreateView extends StatefulWidget {
   final VoidCallback onBack;
@@ -49,7 +50,7 @@ class _ConnectionCreateViewState extends State<ConnectionCreateView> {
           backgroundColor: colorScheme.surface,
           surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: context.appBorderRadius(16),
             side: BorderSide(color: colorScheme.outline.withValues(alpha: 0.5)),
           ),
           child: Container(
@@ -154,13 +155,13 @@ class _ConnectionCreateViewState extends State<ConnectionCreateView> {
                         fillColor: colorScheme.surfaceContainerLow,
                         contentPadding: const EdgeInsets.all(16),
                         enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: context.appBorderRadius(12),
                           borderSide: BorderSide(
                             color: colorScheme.outline.withValues(alpha: 0.3),
                           ),
                         ),
                         focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: context.appBorderRadius(12),
                           borderSide: BorderSide(
                             color: colorScheme.primary,
                             width: 2,

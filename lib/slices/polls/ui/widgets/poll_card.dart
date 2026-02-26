@@ -15,6 +15,8 @@ import 'poll_timer_badge.dart';
 import 'poll_progress_bar.dart';
 import 'poll_voted_indicator.dart';
 
+import '../../../../shared/theme/tokens/app_shape_tokens.dart';
+
 class PollCard extends ConsumerWidget {
   final PollItem poll;
   final DashboardRepository repo;
@@ -84,7 +86,7 @@ class PollCard extends ConsumerWidget {
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: colorScheme.surfaceContainerHigh,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: context.appBorderRadius(20),
             border: Border.all(
               color: isClosed
                   ? (isPassed
@@ -399,7 +401,7 @@ class PollCard extends ConsumerWidget {
                           visualDensity: VisualDensity.compact,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: context.appBorderRadius(8),
                           ),
                         ),
                         onPressed: canVote
@@ -443,7 +445,7 @@ class PollCard extends ConsumerWidget {
                           visualDensity: VisualDensity.compact,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: context.appBorderRadius(8),
                           ),
                         ),
                         onPressed: canVote

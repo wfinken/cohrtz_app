@@ -21,6 +21,8 @@ import 'package:cohortz/slices/permissions_feature/ui/widgets/visibility_group_s
 import '../../models/note_model.dart';
 import 'package:cohortz/slices/dashboard_shell/ui/widgets/ghost_add_button.dart';
 
+import '../../../../shared/theme/tokens/app_shape_tokens.dart';
+
 enum _NotesMode { write, preview, options }
 
 enum _NotesView { list, editor }
@@ -231,7 +233,7 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
               padding: widget.padding,
               decoration: BoxDecoration(
                 color: Theme.of(context).cardColor,
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: context.appBorderRadius(14),
                 border: Border.all(color: Theme.of(context).dividerColor),
               ),
               child: Column(
@@ -329,7 +331,7 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
               });
               _notifyDocumentChanged(note.id);
             },
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: context.appBorderRadius(8),
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: Row(
@@ -443,7 +445,7 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
                         vertical: 4,
                       ),
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(4),
+                        borderRadius: context.appBorderRadius(4),
                         borderSide: BorderSide(
                           color: Theme.of(context).colorScheme.primary,
                         ),
@@ -472,7 +474,7 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
                             });
                           }
                         : null,
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: context.appBorderRadius(4),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 8,
@@ -774,7 +776,7 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: panelColor,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: context.appBorderRadius(12),
             border: Border.all(color: theme.dividerColor),
           ),
           child: Column(
@@ -830,7 +832,7 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: panelColor,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: context.appBorderRadius(12),
             border: Border.all(color: theme.dividerColor),
           ),
           child: Column(
@@ -874,7 +876,7 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: panelColor,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: context.appBorderRadius(12),
             border: Border.all(color: theme.dividerColor),
           ),
           child: Column(
@@ -1033,7 +1035,7 @@ class _NotesWidgetState extends ConsumerState<NotesWidget> {
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: context.appBorderRadius(14),
         border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: Center(
@@ -1552,7 +1554,7 @@ class _MarkdownPreview extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: panel,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: context.appBorderRadius(10),
             border: Border.all(color: divider),
           ),
           child: SelectableText(
@@ -1641,7 +1643,7 @@ class _MarkdownPreview extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
               color: panel,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: context.appBorderRadius(8),
               border: Border(left: BorderSide(color: primary, width: 3)),
             ),
             child: _lineText(
@@ -1848,11 +1850,11 @@ class _MarkdownPreview extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: panel,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: context.appBorderRadius(10),
         border: Border.all(color: divider),
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: context.appBorderRadius(10),
         child: Table(
           columnWidths: {
             for (int i = 0; i < columnCount; i++) i: const FlexColumnWidth(1),
@@ -1958,7 +1960,7 @@ class _MarkdownPreview extends StatelessWidget {
                 color: theme.colorScheme.surfaceContainerHighest.withValues(
                   alpha: 0.35,
                 ),
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: context.appBorderRadius(4),
               ),
               child: Text(
                 token.substring(1, token.length - 1),

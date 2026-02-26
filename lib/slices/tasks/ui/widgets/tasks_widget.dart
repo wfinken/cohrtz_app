@@ -17,6 +17,8 @@ import 'package:cohortz/slices/dashboard_shell/models/system_model.dart';
 import 'package:cohortz/slices/dashboard_shell/ui/widgets/skeleton_loader.dart';
 import 'package:cohortz/slices/dashboard_shell/ui/widgets/ghost_add_button.dart';
 
+import '../../../../shared/theme/tokens/app_shape_tokens.dart';
+
 class TasksWidget extends ConsumerWidget {
   const TasksWidget({super.key});
 
@@ -116,7 +118,7 @@ class TasksWidget extends ConsumerWidget {
                       return InkWell(
                         key: ValueKey('task_tile_${task.id}'),
                         onTap: () => _showTaskDetailsDialog(context, task),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: context.appBorderRadius(12),
                         child: Container(
                           margin: const EdgeInsets.only(bottom: 8),
                           padding: const EdgeInsets.all(12),
@@ -124,7 +126,7 @@ class TasksWidget extends ConsumerWidget {
                             color: Theme.of(
                               context,
                             ).colorScheme.surfaceContainerHigh,
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: context.appBorderRadius(12),
                           ),
                           child: Row(
                             children: [
@@ -137,14 +139,14 @@ class TasksWidget extends ConsumerWidget {
                                         myId: myId,
                                       )
                                     : () {},
-                                borderRadius: BorderRadius.circular(6),
+                                borderRadius: context.appBorderRadius(6),
                                 child: Padding(
                                   padding: const EdgeInsets.all(2),
                                   child: Container(
                                     width: 16,
                                     height: 16,
                                     decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(4),
+                                      borderRadius: context.appBorderRadius(4),
                                       border: Border.all(
                                         color: task.isCompleted
                                             ? Theme.of(

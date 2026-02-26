@@ -1,11 +1,13 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../../shared/theme/tokens/dialog_button_styles.dart';
+import '../../../../shared/theme/tokens/app_shape_tokens.dart';
 import '../../../../shared/utils/debug_helper.dart';
 
-import '../../../../app/di/app_providers.dart';
 import 'notification_settings_dialog.dart';
+import 'theme_appearance_dialog.dart';
 
 class AppUserSettingsDialog extends ConsumerStatefulWidget {
   const AppUserSettingsDialog({super.key});
@@ -18,11 +20,9 @@ class AppUserSettingsDialog extends ConsumerStatefulWidget {
 class _AppUserSettingsDialogState extends ConsumerState<AppUserSettingsDialog> {
   @override
   Widget build(BuildContext context) {
-    final themeMode = ref.watch(themeModeProvider);
-
     return Dialog(
       backgroundColor: Theme.of(context).cardColor,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(borderRadius: context.appBorderRadius()),
       child: Container(
         padding: const EdgeInsets.all(24),
         constraints: const BoxConstraints(maxWidth: 440),
@@ -68,40 +68,34 @@ class _AppUserSettingsDialogState extends ConsumerState<AppUserSettingsDialog> {
                 ),
               ),
               const SizedBox(height: 12),
-              Text(
-                'Theme',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  Icons.palette_outlined,
+                  color: Theme.of(context).colorScheme.primary,
                 ),
-              ),
-              const SizedBox(height: 8),
-              SegmentedButton<ThemeMode>(
-                segments: const [
-                  ButtonSegment<ThemeMode>(
-                    value: ThemeMode.system,
-                    label: Text('System'),
+                title: Text(
+                  'Theme & Appearance',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
-                  ButtonSegment<ThemeMode>(
-                    value: ThemeMode.light,
-                    label: Text('Light'),
-                  ),
-                  ButtonSegment<ThemeMode>(
-                    value: ThemeMode.dark,
-                    label: Text('Dark'),
-                  ),
-                ],
-                selected: {themeMode},
-                showSelectedIcon: false,
-                onSelectionChanged: (selection) {
-                  if (selection.isEmpty) return;
-                  ref
-                      .read(themeModeProvider.notifier)
-                      .setThemeMode(selection.first);
+                ),
+                subtitle: Text(
+                  'Color theme, radii, fonts, and mode.',
+                  style: TextStyle(color: Theme.of(context).hintColor),
+                ),
+                trailing: Icon(
+                  Icons.chevron_right,
+                  color: Theme.of(context).hintColor,
+                ),
+                onTap: () {
+                  showDialog(
+                    context: context,
+                    builder: (_) => const ThemeAppearanceDialog(),
+                  );
                 },
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 title: Text(

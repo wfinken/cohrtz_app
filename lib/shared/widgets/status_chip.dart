@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/tokens/app_shape_tokens.dart';
 
 class StatusChip extends StatelessWidget {
   const StatusChip({
@@ -23,7 +24,7 @@ class StatusChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.16),
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: context.appBorderRadius(12),
           border: Border.all(color: color.withValues(alpha: 0.4)),
         ),
         child: Row(
