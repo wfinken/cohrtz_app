@@ -1,163 +1,20 @@
 import 'package:drift/drift.dart';
+import 'package:cohortz/slices/calendar/state/db/calendar_events_table.dart';
+import 'package:cohortz/slices/chat/state/db/chat_messages_table.dart';
+import 'package:cohortz/slices/chat/state/db/chat_threads_table.dart';
+import 'package:cohortz/slices/dashboard_shell/state/db/avatar_blobs_table.dart';
+import 'package:cohortz/slices/dashboard_shell/state/db/dashboard_widgets_table.dart';
+import 'package:cohortz/slices/dashboard_shell/state/db/group_settings_table.dart';
+import 'package:cohortz/slices/dashboard_shell/state/db/user_profiles_table.dart';
+import 'package:cohortz/slices/notes/state/db/notes_table.dart';
+import 'package:cohortz/slices/permissions_feature/state/db/logical_groups_table.dart';
+import 'package:cohortz/slices/permissions_feature/state/db/members_table.dart';
+import 'package:cohortz/slices/permissions_feature/state/db/roles_table.dart';
+import 'package:cohortz/slices/polls/state/db/polls_table.dart';
+import 'package:cohortz/slices/tasks/state/db/tasks_table.dart';
+import 'package:cohortz/slices/vault/state/db/vault_items_table.dart';
 
 part 'database.g.dart';
-
-@DataClassName('NoteEntity')
-class Notes extends Table {
-  TextColumn get id => text()();
-  TextColumn get value => text()();
-  IntColumn get isDeleted =>
-      integer().named('is_deleted').withDefault(const Constant(0))();
-
-  @override
-  Set<Column> get primaryKey => {id};
-}
-
-@DataClassName('TaskEntity')
-class Tasks extends Table {
-  TextColumn get id => text()();
-  TextColumn get value => text()();
-  IntColumn get isDeleted =>
-      integer().named('is_deleted').withDefault(const Constant(0))();
-
-  @override
-  Set<Column> get primaryKey => {id};
-}
-
-@DataClassName('CalendarEventEntity')
-class CalendarEvents extends Table {
-  TextColumn get id => text()();
-  TextColumn get value => text()();
-  IntColumn get isDeleted =>
-      integer().named('is_deleted').withDefault(const Constant(0))();
-
-  @override
-  Set<Column> get primaryKey => {id};
-}
-
-@DataClassName('VaultItemEntity')
-class VaultItems extends Table {
-  TextColumn get id => text()();
-  TextColumn get value => text()();
-  IntColumn get isDeleted =>
-      integer().named('is_deleted').withDefault(const Constant(0))();
-
-  @override
-  Set<Column> get primaryKey => {id};
-}
-
-@DataClassName('ChatMessageEntity')
-class ChatMessages extends Table {
-  TextColumn get id => text()();
-  TextColumn get value => text()();
-  IntColumn get isDeleted =>
-      integer().named('is_deleted').withDefault(const Constant(0))();
-
-  @override
-  Set<Column> get primaryKey => {id};
-}
-
-@DataClassName('ChatThreadEntity')
-class ChatThreads extends Table {
-  TextColumn get id => text()();
-  TextColumn get value => text()();
-  IntColumn get isDeleted =>
-      integer().named('is_deleted').withDefault(const Constant(0))();
-
-  @override
-  Set<Column> get primaryKey => {id};
-}
-
-@DataClassName('UserProfileEntity')
-class UserProfiles extends Table {
-  TextColumn get id => text()();
-  TextColumn get value => text()();
-  IntColumn get isDeleted =>
-      integer().named('is_deleted').withDefault(const Constant(0))();
-
-  @override
-  Set<Column> get primaryKey => {id};
-}
-
-@DataClassName('AvatarBlobEntity')
-class AvatarBlobs extends Table {
-  @override
-  String get tableName => 'avatar_blob_cache';
-
-  TextColumn get id => text()();
-  BlobColumn get data => blob()();
-
-  @override
-  Set<Column> get primaryKey => {id};
-}
-
-@DataClassName('MemberEntity')
-class Members extends Table {
-  TextColumn get id => text()();
-  TextColumn get value => text()();
-  IntColumn get isDeleted =>
-      integer().named('is_deleted').withDefault(const Constant(0))();
-
-  @override
-  Set<Column> get primaryKey => {id};
-}
-
-@DataClassName('RoleEntity')
-class Roles extends Table {
-  TextColumn get id => text()();
-  TextColumn get value => text()();
-  IntColumn get isDeleted =>
-      integer().named('is_deleted').withDefault(const Constant(0))();
-
-  @override
-  Set<Column> get primaryKey => {id};
-}
-
-@DataClassName('GroupSettingsEntity')
-class GroupSettingsTable extends Table {
-  @override
-  String get tableName => 'group_settings';
-  TextColumn get id => text()();
-  TextColumn get value => text()();
-  IntColumn get isDeleted =>
-      integer().named('is_deleted').withDefault(const Constant(0))();
-
-  @override
-  Set<Column> get primaryKey => {id};
-}
-
-@DataClassName('DashboardWidgetEntity')
-class DashboardWidgets extends Table {
-  TextColumn get id => text()();
-  TextColumn get value => text()();
-  IntColumn get isDeleted =>
-      integer().named('is_deleted').withDefault(const Constant(0))();
-
-  @override
-  Set<Column> get primaryKey => {id};
-}
-
-@DataClassName('LogicalGroupEntity')
-class LogicalGroups extends Table {
-  TextColumn get id => text()();
-  TextColumn get value => text()();
-  IntColumn get isDeleted =>
-      integer().named('is_deleted').withDefault(const Constant(0))();
-
-  @override
-  Set<Column> get primaryKey => {id};
-}
-
-@DataClassName('PollEntity')
-class Polls extends Table {
-  TextColumn get id => text()();
-  TextColumn get value => text()();
-  IntColumn get isDeleted =>
-      integer().named('is_deleted').withDefault(const Constant(0))();
-
-  @override
-  Set<Column> get primaryKey => {id};
-}
 
 @DriftDatabase(
   tables: [
