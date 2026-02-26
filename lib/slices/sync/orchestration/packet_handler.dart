@@ -112,12 +112,28 @@ class PacketHandler {
     });
   }
 
+  void _fireAndForget(String operation, FutureOr<void> Function() action) {
+    unawaited(
+      Future.sync(action).catchError((Object error, StackTrace stackTrace) {
+        Log.e(
+          'PacketHandler',
+          'Async operation failed: $operation',
+          error,
+          stackTrace,
+        );
+      }),
+    );
+  }
+
   // Update Group Key (called when TreekemHandler or peers update it)
   void updateGroupKey(String roomName, SecretKey key) {
     _keyManager.setGroupKey(roomName, key);
     onGroupKeyUpdated(roomName, key);
     _replayBufferedPackets(roomName);
-    retryBroadcast(roomName);
+    _fireAndForget(
+      'retryBroadcast for $roomName after group key update',
+      () => retryBroadcast(roomName),
+    );
   }
 
   Future<void> onDataReceived(String roomName, List<int> data) async {
@@ -175,12 +191,24 @@ class PacketHandler {
       roomName,
       packet,
       () {
-        _maybeBroadcastLocalProfile(roomName);
-        onPeerHandshake(roomName, packet.senderId);
+        _fireAndForget(
+          'broadcast local profile for $roomName',
+          () => _maybeBroadcastLocalProfile(roomName),
+        );
+        _fireAndForget(
+          'onPeerHandshake for $roomName',
+          () => onPeerHandshake(roomName, packet.senderId),
+        );
         final group = _groupManager.findGroup(roomName);
         if (group.isEmpty || group['isInviteRoom'] != 'true') {
-          _syncProtocol.requestSync(roomName);
-          onGroupKeyShared(roomName, packet.senderId);
+          _fireAndForget(
+            'requestSync for $roomName after handshake',
+            () => _syncProtocol.requestSync(roomName),
+          );
+          _fireAndForget(
+            'onGroupKeyShared for $roomName',
+            () => onGroupKeyShared(roomName, packet.senderId),
+          );
         }
       },
     );
@@ -508,7 +536,10 @@ class PacketHandler {
           // the peer) so buffered packets can eventually be replayed.
           final group = _groupManager.findGroup(roomName);
           if (group.isEmpty || group['isInviteRoom'] != 'true') {
-            _syncProtocol.requestSync(roomName);
+            _fireAndForget(
+              'requestSync for $roomName while awaiting GSK packet',
+              () => _syncProtocol.requestSync(roomName),
+            );
           }
           return false;
         }
@@ -544,7 +575,10 @@ class PacketHandler {
           _handshakeHandler.requestHandshake(roomName, force: true);
           final group = _groupManager.findGroup(roomName);
           if (group.isEmpty || group['isInviteRoom'] != 'true') {
-            _syncProtocol.requestSync(roomName);
+            _fireAndForget(
+              'requestSync for $roomName after decrypt MAC error',
+              () => _syncProtocol.requestSync(roomName),
+            );
           }
         }
         return false;
@@ -614,7 +648,10 @@ class PacketHandler {
         'PacketHandler',
         'Merged data chunk from ${packet.senderId} in $roomName',
       );
-      _broadcastConsistencyCheck(roomName);
+      _fireAndForget(
+        'broadcastConsistencyCheck for $roomName',
+        () => _broadcastConsistencyCheck(roomName),
+      );
     } catch (e) {
       Log.e('PacketHandler', 'Merge error', e);
     }
@@ -710,7 +747,10 @@ class PacketHandler {
           t2: t2,
         );
       } else if (type == 'GSK_REQ') {
-        onGroupKeyShared(roomName, packet.senderId);
+        _fireAndForget(
+          'onGroupKeyShared (GSK_REQ) for $roomName',
+          () => onGroupKeyShared(roomName, packet.senderId),
+        );
       } else if (type == 'KEY_REQ') {
         await _keyManager.shareVaultKeyIfHeld(roomName, packet.senderId);
       } else if (type == 'ROOM_KEY') {
@@ -726,7 +766,10 @@ class PacketHandler {
         final keyBytes = base64Decode(keyStr);
         final key = SecretKey(keyBytes);
         updateGroupKey(roomName, key); // Replays incoming buffers
-        retryBroadcast(roomName); // Retries outgoing buffers
+        _fireAndForget(
+          'retryBroadcast for $roomName after GSK_SHARE',
+          () => retryBroadcast(roomName),
+        ); // Retries outgoing buffers
       }
     } catch (e) {
       Log.e('PacketHandler', 'Unicast handling error', e);

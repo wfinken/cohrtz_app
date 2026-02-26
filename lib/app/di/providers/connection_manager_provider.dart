@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:uuid/uuid.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cohortz/src/generated/p2p_packet.pb.dart';
@@ -47,15 +46,15 @@ connectionManagerProvider = Provider<ConnectionManager>((ref) {
     secureStorage: ref.watch(secureStorageServiceProvider),
     groupManager: ref.watch(groupManagerProvider),
     nodeId: ref.watch(nodeIdProvider),
-    onDataReceived: (room, event) {
+    onDataReceived: (room, event) async {
       // Only access PacketHandler when data arrives
-      ref.read(packetHandlerProvider).onDataReceived(room, event.data);
+      await ref.read(packetHandlerProvider).onDataReceived(room, event.data);
     },
-    onParticipantConnected: (room, event) {
+    onParticipantConnected: (room, event) async {
       // Handshake Trigger
-      ref.read(handshakeHandlerProvider).broadcastHandshake(room);
+      await ref.read(handshakeHandlerProvider).broadcastHandshake(room);
       // Flush any pending buffers now that a peer exists.
-      ref.read(dataBroadcasterProvider).retryBufferedPackets(room);
+      await ref.read(dataBroadcasterProvider).retryBufferedPackets(room);
 
       final peerId = event.participant.identity;
       final localId = manager.resolveLocalParticipantIdForRoom(room);
@@ -68,7 +67,7 @@ connectionManagerProvider = Provider<ConnectionManager>((ref) {
             peerId: peerId,
             localParticipantId: localId,
           );
-          unawaited(ref.read(dataBroadcasterProvider).broadcast(room, ping));
+          await ref.read(dataBroadcasterProvider).broadcast(room, ping);
         }
       }
     },
@@ -112,7 +111,7 @@ connectionManagerProvider = Provider<ConnectionManager>((ref) {
       ref.read(keyManagerProvider).clearGroupKey(room, clearStored: false);
       ref.read(handshakeHandlerProvider).clearRoom(room);
     },
-    onLocalDataChanged: (room, data) {
+    onLocalDataChanged: (room, data) async {
       // Guard: Don't broadcast if we don't have the key yet (prevents "GSK missing" errors)
       // The data is already in the local CRDT, so it will be synced when we get the key
       // and triggering a Sync/Consistency check.
@@ -123,7 +122,7 @@ connectionManagerProvider = Provider<ConnectionManager>((ref) {
         ..requestId = const Uuid().v4()
         ..senderId = manager.resolveLocalParticipantIdForRoom(room)
         ..payload = data;
-      ref.read(dataBroadcasterProvider).broadcast(room, packet);
+      await ref.read(dataBroadcasterProvider).broadcast(room, packet);
     },
   );
   ref.onDispose(manager.dispose);

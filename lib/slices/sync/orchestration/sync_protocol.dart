@@ -62,34 +62,38 @@ class SyncProtocol {
   ///
   /// Includes our vector clock so responders can send only missing data.
   Future<void> requestSync(String roomName, {bool force = false}) async {
-    if (!force) {
-      final now = DateTime.now();
-      final last = _lastSyncRequest[roomName];
-      if (last != null && now.difference(last) < const Duration(seconds: 3)) {
-        return;
+    try {
+      if (!force) {
+        final now = DateTime.now();
+        final last = _lastSyncRequest[roomName];
+        if (last != null && now.difference(last) < const Duration(seconds: 3)) {
+          return;
+        }
+        _lastSyncRequest[roomName] = now;
       }
-      _lastSyncRequest[roomName] = now;
+
+      Log.d('SyncProtocol', 'Broadcasting SYNC_REQ for $roomName...');
+      SyncDiagnostics.emit(
+        tag: 'SyncProtocol',
+        message: 'Broadcasting SYNC_REQ for room sync.',
+        roomName: roomName,
+        kind: SyncDiagnosticKind.sync,
+        direction: SyncDiagnosticDirection.outbound,
+      );
+
+      final localVc = await _crdtService.getVectorClock(roomName);
+      final vcPayload = utf8.encode(jsonEncode(localVc));
+
+      final reqPacket = P2PPacket()
+        ..type = P2PPacket_PacketType.SYNC_REQ
+        ..requestId = const Uuid().v4()
+        ..senderId = getLocalParticipantIdForRoom(roomName)
+        ..payload = vcPayload;
+
+      await broadcast(roomName, reqPacket);
+    } catch (e, stack) {
+      Log.e('SyncProtocol', 'Error requesting sync for $roomName', e, stack);
     }
-
-    Log.d('SyncProtocol', 'Broadcasting SYNC_REQ for $roomName...');
-    SyncDiagnostics.emit(
-      tag: 'SyncProtocol',
-      message: 'Broadcasting SYNC_REQ for room sync.',
-      roomName: roomName,
-      kind: SyncDiagnosticKind.sync,
-      direction: SyncDiagnosticDirection.outbound,
-    );
-
-    final localVc = await _crdtService.getVectorClock(roomName);
-    final vcPayload = utf8.encode(jsonEncode(localVc));
-
-    final reqPacket = P2PPacket()
-      ..type = P2PPacket_PacketType.SYNC_REQ
-      ..requestId = const Uuid().v4()
-      ..senderId = getLocalParticipantIdForRoom(roomName)
-      ..payload = vcPayload;
-
-    await broadcast(roomName, reqPacket);
   }
 
   /// Handles an incoming SYNC_REQ packet.
