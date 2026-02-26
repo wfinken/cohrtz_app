@@ -13,8 +13,10 @@ import 'package:cohortz/slices/permissions_feature/state/logical_group_providers
 import 'package:cohortz/shared/widgets/profile_avatar.dart';
 import '../dialogs/add_event_dialog.dart';
 import '../dialogs/event_details_dialog.dart';
-import 'package:cohortz/slices/dashboard_shell/ui/widgets/skeleton_loader.dart';
 import 'package:cohortz/slices/dashboard_shell/ui/widgets/ghost_add_button.dart';
+import 'package:cohortz/slices/dashboard_shell/ui/widgets/skeleton_loader.dart';
+
+import '../../../../shared/theme/tokens/app_shape_tokens.dart';
 
 class CalendarWidget extends ConsumerWidget {
   const CalendarWidget({super.key});
@@ -78,7 +80,7 @@ class CalendarWidget extends ConsumerWidget {
                           context: context,
                           builder: (_) => EventDetailsDialog(event: event),
                         ),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: context.appBorderRadius(12),
                         child: Container(
                           margin: const EdgeInsets.only(bottom: 8),
                           padding: const EdgeInsets.only(
@@ -87,7 +89,7 @@ class CalendarWidget extends ConsumerWidget {
                             bottom: 12,
                           ),
                           decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: context.appBorderRadius(12),
                           ),
                           child: Row(
                             children: [
@@ -96,7 +98,7 @@ class CalendarWidget extends ConsumerWidget {
                                 height: 48,
                                 decoration: BoxDecoration(
                                   color: colorScheme.secondaryContainer,
-                                  borderRadius: BorderRadius.circular(8),
+                                  borderRadius: context.appBorderRadius(8),
                                   border: Border.all(
                                     color: colorScheme.secondary.withValues(
                                       alpha: 0.2,

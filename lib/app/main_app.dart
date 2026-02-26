@@ -11,14 +11,14 @@ class MainApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(activityNotificationBootstrapProvider);
-    final themeMode = ref.watch(themeModeProvider);
+    final themeSettings = ref.watch(themeSettingsProvider);
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Cohrtz',
-      themeMode: themeMode,
-      theme: AppTheme.light,
-      darkTheme: AppTheme.dark,
+      themeMode: themeSettings.mode,
+      theme: AppTheme.lightForSettings(themeSettings),
+      darkTheme: AppTheme.darkForSettings(themeSettings),
       home: const HomeScreen(),
     );
   }

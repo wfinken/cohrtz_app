@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/di/app_providers.dart';
+
+import '../../../../shared/theme/tokens/app_shape_tokens.dart';
 import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
 import 'package:cohortz/slices/dashboard_shell/models/system_model.dart';
 
@@ -131,7 +133,7 @@ class _NotificationSettingsDialogState
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: Theme.of(context).cardColor,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(borderRadius: context.appBorderRadius()),
       child: Container(
         padding: const EdgeInsets.all(24),
         constraints: const BoxConstraints(maxWidth: 460),
@@ -190,7 +192,7 @@ class _NotificationSettingsDialogState
                   initialValue: _selectedRoomId,
                   decoration: InputDecoration(
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(context.appRadius()),
                     ),
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 12,

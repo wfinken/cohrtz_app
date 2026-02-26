@@ -11,7 +11,7 @@ import '../../../../slices/permissions_core/permission_providers.dart';
 import '../../../../slices/permissions_core/permission_utils.dart';
 import '../../../../slices/permissions_core/visibility_acl.dart';
 import '../../../../app/di/app_providers.dart';
-import '../../../../shared/theme/tokens/app_theme.dart';
+import '../../../../shared/theme/tokens/app_shape_tokens.dart';
 import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
 import 'package:cohortz/slices/dashboard_shell/models/dashboard_models.dart';
 import 'package:cohortz/slices/permissions_feature/models/logical_group_model.dart';
@@ -178,7 +178,7 @@ class _AddVaultDialogState extends ConsumerState<AddVaultDialog> {
                 height: 90,
                 decoration: BoxDecoration(
                   color: Colors.transparent,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(context.appRadius()),
                   border: Border.all(
                     color: isSelected
                         ? colorScheme.tertiary
@@ -269,11 +269,11 @@ class _AddVaultDialogState extends ConsumerState<AddVaultDialog> {
             filled: true,
             fillColor: inputFillColor,
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(context.appRadius()),
               borderSide: BorderSide(color: theme.dividerColor),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(context.appRadius()),
               borderSide: BorderSide(color: colorScheme.tertiary),
             ),
           ),
@@ -295,7 +295,7 @@ class _AddVaultDialogState extends ConsumerState<AddVaultDialog> {
             _selectedType == 'password'
                 ? InkWell(
                     onTap: hasPermission ? _generateStrongPassword : null,
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: BorderRadius.circular(context.appRadius()),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 8,
@@ -305,7 +305,9 @@ class _AddVaultDialogState extends ConsumerState<AddVaultDialog> {
                         color: isDark
                             ? colorScheme.surfaceContainerHigh
                             : colorScheme.surfaceContainerLow,
-                        borderRadius: BorderRadius.circular(4),
+                        borderRadius: BorderRadius.circular(
+                          context.appRadius(),
+                        ),
                       ),
                       child: Row(
                         children: [
@@ -362,11 +364,11 @@ class _AddVaultDialogState extends ConsumerState<AddVaultDialog> {
             filled: true,
             fillColor: inputFillColor,
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(context.appRadius()),
               borderSide: BorderSide(color: theme.dividerColor),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(context.appRadius()),
               borderSide: BorderSide(color: colorScheme.tertiary),
             ),
           ),
@@ -386,7 +388,7 @@ class _AddVaultDialogState extends ConsumerState<AddVaultDialog> {
             : colorScheme.surfaceContainerLow,
         border: Border(top: BorderSide(color: colorScheme.outlineVariant)),
         borderRadius: BorderRadius.vertical(
-          bottom: Radius.circular(AppTheme.dialogRadius),
+          bottom: Radius.circular(appShapeTokensOf(context).dialogRadius),
         ),
       ),
       child: Padding(

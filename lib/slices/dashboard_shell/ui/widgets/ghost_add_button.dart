@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
+import '../../../../shared/theme/tokens/app_shape_tokens.dart';
 
 class GhostAddButton extends StatefulWidget {
   final String label;
@@ -31,13 +32,14 @@ class _GhostAddButtonState extends State<GhostAddButton> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final hintColor = theme.hintColor;
+    final resolvedRadius = context.appRadius(widget.borderRadius);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       height: widget.height,
       margin: widget.margin,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(widget.borderRadius),
+        borderRadius: BorderRadius.circular(resolvedRadius),
         color: _isHovering
             ? colorScheme.onSurface.withValues(alpha: 0.05)
             : Colors.transparent,
@@ -50,7 +52,7 @@ class _GhostAddButtonState extends State<GhostAddButton> {
           dashWidth: 4,
           dashSpace: 4,
           strokeWidth: 1.5,
-          borderRadius: widget.borderRadius,
+          borderRadius: resolvedRadius,
         ),
         child: MouseRegion(
           cursor: widget.onTap != null

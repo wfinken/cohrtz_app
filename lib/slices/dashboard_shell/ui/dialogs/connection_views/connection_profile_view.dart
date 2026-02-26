@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../../../../shared/theme/tokens/app_shape_tokens.dart';
 
 class ConnectionProfileView extends StatefulWidget {
   const ConnectionProfileView({
@@ -61,7 +62,7 @@ class _ConnectionProfileViewState extends State<ConnectionProfileView> {
           backgroundColor: colorScheme.surface,
           surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: context.appBorderRadius(16),
             side: BorderSide(color: colorScheme.outline.withValues(alpha: 0.5)),
           ),
           child: Container(
@@ -126,7 +127,7 @@ class _ConnectionProfileViewState extends State<ConnectionProfileView> {
                     filled: true,
                     fillColor: colorScheme.surfaceContainerLow,
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: context.appBorderRadius(12),
                       borderSide: BorderSide(
                         color: colorScheme.outline.withValues(alpha: 0.3),
                       ),

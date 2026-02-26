@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/di/app_providers.dart';
 import 'package:cohortz/slices/dashboard_shell/models/system_model.dart';
+import 'theme_appearance_dialog.dart';
 
 class AppSettingsDialog extends ConsumerStatefulWidget {
   const AppSettingsDialog({super.key});
@@ -56,7 +57,6 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final themeMode = ref.watch(themeModeProvider);
     final groupSettingsAsync = ref.watch(groupSettingsProvider);
 
     return AlertDialog(
@@ -77,29 +77,46 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  Icons.palette_outlined,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
                 title: Text(
-                  'Dark Mode',
+                  'Theme & Appearance',
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
-                trailing: Switch(
-                  value: themeMode == ThemeMode.dark,
-                  activeThumbColor: Colors.blue,
-                  activeTrackColor: Colors.blue.withValues(alpha: 0.2),
-                  inactiveThumbColor: Colors.grey,
-                  inactiveTrackColor: Colors.grey.withValues(alpha: 0.2),
-                  trackOutlineColor: WidgetStateProperty.all(
-                    Colors.transparent,
+                subtitle: Text(
+                  'Color theme, radii, fonts, and mode.',
+                  style: TextStyle(color: Theme.of(context).hintColor),
+                ),
+                trailing: Icon(
+                  Icons.chevron_right,
+                  color: Theme.of(context).hintColor,
+                ),
+                onTap: () {
+                  showDialog(
+                    context: context,
+                    builder: (_) => const ThemeAppearanceDialog(),
+                  );
+                },
+              ),
+              Divider(color: Theme.of(context).colorScheme.outlineVariant),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Notifications',
+                  style: TextStyle(
+                    color: Theme.of(context).hintColor,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
                   ),
-                  onChanged: (value) {
-                    ref
-                        .read(themeModeProvider.notifier)
-                        .setThemeMode(value ? ThemeMode.dark : ThemeMode.light);
-                  },
                 ),
               ),
-              const Divider(),
+              const SizedBox(height: 6),
               groupSettingsAsync.when(
                 data: (settings) {
                   final resolvedSettings = _resolveSettings(settings);

@@ -16,7 +16,7 @@ import 'package:cohortz/slices/permissions_feature/models/logical_group_model.da
 import 'package:cohortz/slices/permissions_feature/state/logical_group_providers.dart';
 import 'package:cohortz/slices/permissions_feature/ui/widgets/visibility_group_selector.dart';
 import '../../../../app/di/app_providers.dart';
-import '../../../../shared/theme/tokens/app_theme.dart';
+import '../../../../shared/theme/tokens/app_shape_tokens.dart';
 
 class AddEventDialog extends ConsumerWidget {
   final DateTime? initialDate;
@@ -139,7 +139,9 @@ class _AddEventDialogContentState
       backgroundColor:
           theme.dialogTheme.backgroundColor ?? theme.colorScheme.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+        borderRadius: BorderRadius.circular(
+          appShapeTokensOf(context).cardRadius,
+        ),
         side: BorderSide(color: theme.dividerColor),
       ),
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
@@ -207,7 +209,9 @@ class _AddEventDialogContentState
                     Container(
                       decoration: BoxDecoration(
                         color: theme.colorScheme.surfaceContainer,
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(
+                          context.appRadius(),
+                        ),
                         border: Border.all(color: theme.dividerColor),
                       ),
                       child: Column(
@@ -223,7 +227,9 @@ class _AddEventDialogContentState
                                     color: theme.colorScheme.primary.withValues(
                                       alpha: 0.1,
                                     ),
-                                    borderRadius: BorderRadius.circular(8),
+                                    borderRadius: BorderRadius.circular(
+                                      context.appRadius(),
+                                    ),
                                   ),
                                   child: Icon(
                                     Icons.access_time,
@@ -288,7 +294,9 @@ class _AddEventDialogContentState
                                     decoration: BoxDecoration(
                                       color: theme.colorScheme.onSurface
                                           .withValues(alpha: 0.05),
-                                      borderRadius: BorderRadius.circular(8),
+                                      borderRadius: BorderRadius.circular(
+                                        context.appRadius(),
+                                      ),
                                     ),
                                     child: Icon(
                                       Icons.repeat,
@@ -322,7 +330,9 @@ class _AddEventDialogContentState
                     Container(
                       decoration: BoxDecoration(
                         color: theme.colorScheme.surfaceContainer,
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(
+                          context.appRadius(),
+                        ),
                         border: Border.all(color: theme.dividerColor),
                       ),
                       child: InkWell(
@@ -370,7 +380,9 @@ class _AddEventDialogContentState
                       height: 120,
                       decoration: BoxDecoration(
                         color: theme.colorScheme.surfaceContainer,
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(
+                          context.appRadius(),
+                        ),
                         border: Border.all(color: theme.dividerColor),
                       ),
                       padding: const EdgeInsets.all(16),
@@ -398,7 +410,9 @@ class _AddEventDialogContentState
                     Container(
                       decoration: BoxDecoration(
                         color: theme.colorScheme.surfaceContainer,
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(
+                          context.appRadius(),
+                        ),
                         border: Border.all(color: theme.dividerColor),
                       ),
                       child: InkWell(
@@ -461,7 +475,7 @@ class _AddEventDialogContentState
                   top: BorderSide(color: theme.colorScheme.outlineVariant),
                 ),
                 borderRadius: BorderRadius.vertical(
-                  bottom: Radius.circular(AppTheme.cardRadius),
+                  bottom: Radius.circular(appShapeTokensOf(context).cardRadius),
                 ),
               ),
               child: SizedBox(
@@ -597,7 +611,9 @@ class _AddEventDialogContentState
             },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(borderRadius: BorderRadius.circular(6)),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(context.appRadius()),
+              ),
               child: Text(
                 DateFormat.yMMMd().format(date),
                 style: TextStyle(
@@ -625,7 +641,7 @@ class _AddEventDialogContentState
                 ),
                 decoration: BoxDecoration(
                   color: theme.colorScheme.onSurface.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(context.appRadius()),
                 ),
                 child: Text(
                   time.format(context),
@@ -650,7 +666,7 @@ class _AddEventDialogContentState
     return Container(
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: context.appBorderRadius(),
         border: Border.all(color: theme.dividerColor),
       ),
       child: ListTile(

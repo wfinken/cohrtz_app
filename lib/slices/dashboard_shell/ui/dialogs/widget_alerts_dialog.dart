@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/di/app_providers.dart';
-import '../../../../shared/theme/tokens/app_theme.dart';
+import '../../../../shared/theme/tokens/app_shape_tokens.dart';
 
 class WidgetAlertsDialog extends ConsumerWidget {
   final String groupId;
@@ -37,7 +37,9 @@ class WidgetAlertsDialog extends ConsumerWidget {
     return Dialog(
       backgroundColor: theme.cardColor,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+        borderRadius: BorderRadius.circular(
+          appShapeTokensOf(context).cardRadius,
+        ),
         side: BorderSide(color: theme.dividerColor),
       ),
       child: ConstrainedBox(
@@ -93,7 +95,9 @@ class WidgetAlertsDialog extends ConsumerWidget {
                 ),
                 decoration: BoxDecoration(
                   color: containerColor,
-                  borderRadius: BorderRadius.circular(AppTheme.elementRadius),
+                  borderRadius: BorderRadius.circular(
+                    appShapeTokensOf(context).elementRadius,
+                  ),
                   border: Border.all(color: containerBorderColor),
                 ),
                 child: Row(

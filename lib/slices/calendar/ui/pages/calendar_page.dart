@@ -10,6 +10,7 @@ import '../dialogs/event_details_dialog.dart';
 import '../dialogs/add_event_dialog.dart';
 import 'package:cohortz/slices/dashboard_shell/models/system_model.dart';
 import 'package:cohortz/slices/dashboard_shell/state/dashboard_repository.dart';
+import 'package:cohortz/shared/theme/tokens/app_shape_tokens.dart';
 
 class CalendarPage extends ConsumerStatefulWidget {
   const CalendarPage({super.key});
@@ -75,7 +76,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                   margin: calendarMargin,
                   decoration: BoxDecoration(
                     color: Theme.of(context).cardColor,
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: context.appBorderRadius(16),
                     border: Border.all(
                       color: Theme.of(context).colorScheme.outlineVariant,
                       width: 1,
@@ -167,7 +168,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                   margin: eventsMargin,
                   decoration: BoxDecoration(
                     color: Theme.of(context).colorScheme.surface,
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: context.appBorderRadius(16),
                     border: Border.all(
                       color: Theme.of(context).colorScheme.outlineVariant,
                       width: 1,
@@ -253,7 +254,9 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                                       height: 32,
                                       decoration: BoxDecoration(
                                         color: Colors.orange[400],
-                                        borderRadius: BorderRadius.circular(2),
+                                        borderRadius: context.appBorderRadius(
+                                          2,
+                                        ),
                                       ),
                                     ),
                                     title: Text(

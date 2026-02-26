@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/di/providers/notification_provider.dart';
 import '../../../../slices/notifications/app_notification_service.dart';
-import '../../../../shared/theme/tokens/app_theme.dart';
+import '../../../../shared/theme/tokens/app_shape_tokens.dart';
 
 class NotificationMenu extends ConsumerStatefulWidget {
   const NotificationMenu({super.key});
@@ -70,7 +70,9 @@ class _NotificationMenuState extends ConsumerState<NotificationMenu> {
                 elevation: 8,
                 color: Theme.of(context).cardColor,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+                  borderRadius: BorderRadius.circular(
+                    appShapeTokensOf(context).cardRadius,
+                  ),
                   side: BorderSide(
                     color: Theme.of(context).colorScheme.outlineVariant,
                   ),
@@ -239,7 +241,7 @@ class _NotificationDropdownContent extends ConsumerWidget {
                     ),
                     decoration: BoxDecoration(
                       color: Theme.of(context).colorScheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(context.appRadius()),
                     ),
                     child: Text(
                       '$unreadCount New',
@@ -331,7 +333,7 @@ class _NotificationDropdownContent extends ConsumerWidget {
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
                 color: Theme.of(context).dividerColor,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(context.appRadius()),
               ),
               child: Text(
                 count.toString(),
@@ -346,7 +348,7 @@ class _NotificationDropdownContent extends ConsumerWidget {
               height: 24,
               width: 24,
               child: InkWell(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(context.appRadius()),
                 onTap: () => service.clearCategory(category),
                 child: const Icon(Icons.close, size: 16),
               ),

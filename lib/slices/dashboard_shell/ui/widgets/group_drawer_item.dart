@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cohortz/shared/theme/tokens/app_shape_tokens.dart';
 
 class GroupDrawerItem extends StatelessWidget {
   final IconData icon;
@@ -37,7 +38,7 @@ class GroupDrawerItem extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
       decoration: BoxDecoration(
         color: bgColor,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: context.appBorderRadius(12),
       ),
       child: ListTile(
         leading: Icon(icon, color: finalIconColor, size: 18),
@@ -58,7 +59,7 @@ class GroupDrawerItem extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.error,
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: context.appBorderRadius(10),
                 ),
                 child: Text(
                   badgeCount! > 99 ? '99+' : badgeCount.toString(),
@@ -76,7 +77,9 @@ class GroupDrawerItem extends StatelessWidget {
         visualDensity: const VisualDensity(horizontal: -1, vertical: -2),
         minLeadingWidth: 18,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(
+          borderRadius: context.appBorderRadius(12),
+        ),
       ),
     );
   }

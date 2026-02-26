@@ -17,6 +17,8 @@ import 'package:cohortz/slices/dashboard_shell/ui/widgets/skeleton_loader.dart';
 import 'package:cohortz/slices/permissions_feature/state/logical_group_providers.dart';
 import 'package:cohortz/slices/permissions_feature/ui/widgets/visibility_group_selector.dart';
 
+import '../../../../shared/theme/tokens/app_shape_tokens.dart';
+
 enum _ThreadAction { createChannel, startDm }
 
 enum _SelectedThreadAction { editChannel, deleteChannel, leaveDm }
@@ -362,7 +364,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
               decoration: BoxDecoration(
                 color: Theme.of(context).cardColor,
                 border: Border.all(color: Theme.of(context).dividerColor),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: context.appBorderRadius(10),
               ),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -528,7 +530,9 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
         hoverColor: Theme.of(
           context,
         ).colorScheme.primaryContainer.withValues(alpha: 0.2),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(
+          borderRadius: context.appBorderRadius(10),
+        ),
         leading: Icon(
           icon,
           size: 16,
@@ -786,7 +790,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
       decoration: BoxDecoration(
         color: theme.cardColor,
         border: Border.all(color: theme.dividerColor),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: context.appBorderRadius(12),
       ),
       child: Row(
         children: [
@@ -851,7 +855,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
           border: Border.all(color: Theme.of(context).dividerColor),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: context.appBorderRadius(12),
         ),
         child: TextField(
           controller: _controller,
@@ -875,14 +879,14 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
 
     final sendButton = InkWell(
       onTap: canSend ? () => onSend(_controller.text) : null,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: context.appBorderRadius(12),
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: canSend
               ? const Color(0xFF2563EB)
               : Theme.of(context).disabledColor,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: context.appBorderRadius(12),
         ),
         child: Icon(
           Icons.send,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../shared/theme/tokens/app_shape_tokens.dart';
 import '../../../../shared/theme/tokens/app_semantic_colors.dart';
 
 AppSemanticColors _semanticColors(BuildContext context) {
@@ -91,13 +92,14 @@ class SkeletonBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final semantic = _semanticColors(context);
+    final resolvedRadius = resolveAppRadius(context, borderRadius);
     return SkeletonLoader(
       child: Container(
         width: width,
         height: height,
         decoration: BoxDecoration(
           color: semantic.skeletonBase,
-          borderRadius: BorderRadius.circular(borderRadius),
+          borderRadius: BorderRadius.circular(resolvedRadius),
         ),
       ),
     );
@@ -139,7 +141,7 @@ class SkeletonTaskItem extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.28),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: context.appBorderRadius(12),
         border: Border.all(color: semantic.skeletonBase),
       ),
       child: const Row(

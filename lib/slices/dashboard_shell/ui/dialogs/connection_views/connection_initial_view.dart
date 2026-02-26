@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../../shared/theme/tokens/app_shape_tokens.dart';
 
 class ConnectionInitialView extends StatelessWidget {
   final VoidCallback onCreateSelected;
@@ -19,7 +20,7 @@ class ConnectionInitialView extends StatelessWidget {
       backgroundColor: colorScheme.surface,
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: context.appBorderRadius(16),
         side: BorderSide(color: colorScheme.outline.withValues(alpha: 0.5)),
       ),
       child: Container(
@@ -113,14 +114,14 @@ class _OptionCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: colorScheme.outline.withValues(alpha: 0.3)),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: context.appBorderRadius(16),
         color: colorScheme.surfaceContainerLow,
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: context.appBorderRadius(16),
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
