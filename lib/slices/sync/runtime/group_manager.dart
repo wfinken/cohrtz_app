@@ -222,6 +222,10 @@ class GroupManager {
       prefs,
       _lastGroupIsInviteKey,
     );
+    final isHost = await _readSecureStringWithLegacy(
+      prefs,
+      _lastGroupIsHostKey,
+    );
     final friendlyName = await _readSecureStringWithLegacy(
       prefs,
       _lastGroupFriendlyNameKey,
@@ -239,6 +243,7 @@ class GroupManager {
       'roomName': roomName,
       'identity': identity,
       'isInviteRoom': isInvite,
+      'isHost': isHost,
       'friendlyName': friendlyName ?? await _lookupFriendlyName(roomName),
       'token': await _secureStorage.read(_lastGroupTokenKey),
     };
@@ -262,44 +267,39 @@ class GroupManager {
     bool isHost = false,
     String? token,
   }) async {
+    final existingDataEntry = _knownDataGroups.firstWhere(
+      (g) => g['roomName'] == roomName,
+      orElse: () => {},
+    );
+    final existingInviteEntry = _knownInviteGroups.firstWhere(
+      (g) => g['roomName'] == roomName,
+      orElse: () => {},
+    );
+    final existingIsHost =
+        existingDataEntry['isHost'] == 'true' ||
+        existingInviteEntry['isHost'] == 'true';
+    final effectiveIsHost = isHost || existingIsHost;
+
     final entry = {
       'roomName': roomName,
       'dataRoomName': dataRoomName,
       'identity': identity,
       'token': token,
-      'isHost': isHost.toString(),
+      'isHost': effectiveIsHost.toString(),
       'friendlyName':
           friendlyName ??
-          _knownDataGroups.firstWhere(
-            (g) => g['roomName'] == roomName,
-            orElse: () => {},
-          )['friendlyName'] ??
-          _knownInviteGroups.firstWhere(
-            (g) => g['roomName'] == roomName,
-            orElse: () => {},
-          )['friendlyName'] ??
+          existingDataEntry['friendlyName'] ??
+          existingInviteEntry['friendlyName'] ??
           roomName,
       'avatarBase64':
           avatarBase64 ??
-          _knownDataGroups.firstWhere(
-            (g) => g['roomName'] == roomName,
-            orElse: () => {},
-          )['avatarBase64'] ??
-          _knownInviteGroups.firstWhere(
-            (g) => g['roomName'] == roomName,
-            orElse: () => {},
-          )['avatarBase64'] ??
+          existingDataEntry['avatarBase64'] ??
+          existingInviteEntry['avatarBase64'] ??
           '',
       'description':
           description ??
-          _knownDataGroups.firstWhere(
-            (g) => g['roomName'] == roomName,
-            orElse: () => {},
-          )['description'] ??
-          _knownInviteGroups.firstWhere(
-            (g) => g['roomName'] == roomName,
-            orElse: () => {},
-          )['description'] ??
+          existingDataEntry['description'] ??
+          existingInviteEntry['description'] ??
           '',
       'isInviteRoom': isInviteRoom.toString(),
       'lastJoined': DateTime.now().toIso8601String(),

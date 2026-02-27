@@ -37,5 +37,13 @@ final currentUserIsOwnerProvider = Provider<bool>((ref) {
             syncService.identity ??
             '');
   if (settings == null || userId.isEmpty) return false;
-  return settings.ownerId.isNotEmpty && settings.ownerId == userId;
+  if (settings.ownerId.isEmpty) return false;
+  final canonicalOwner =
+      settings.ownerId.trim().toLowerCase().startsWith('user:')
+      ? settings.ownerId.trim().toLowerCase().substring(5)
+      : settings.ownerId.trim().toLowerCase();
+  final canonicalUser = userId.trim().toLowerCase().startsWith('user:')
+      ? userId.trim().toLowerCase().substring(5)
+      : userId.trim().toLowerCase();
+  return canonicalOwner.isNotEmpty && canonicalOwner == canonicalUser;
 });

@@ -238,6 +238,18 @@ class InviteJoinProcess implements SyncProcess {
           _hybridTimeService,
         );
         await dataRoomRepo.saveUserProfile(dataRoomProfile);
+        final reconnectRepair = await ensureMembershipAfterReconnect(
+          roomName: e.dataRoomUUID,
+          memberId: dataRoomProfile.id,
+        );
+        if (!reconnectRepair) {
+          unawaited(
+            _retryEnsureMembershipAfterReconnect(
+              roomName: e.dataRoomUUID,
+              memberId: dataRoomProfile.id,
+            ),
+          );
+        }
         final reconciled = await _reconcileMemberIdentityAfterJoin(
           roomName: e.dataRoomUUID,
           inviteIdentity: profile.id,
@@ -271,6 +283,125 @@ class InviteJoinProcess implements SyncProcess {
       // If we are here, error occurred.
       // Let parent handle failProcess
       rethrow;
+    }
+  }
+
+  Future<bool> ensureMembershipAfterReconnect({
+    required String roomName,
+    required String memberId,
+  }) async {
+    if (roomName.isEmpty || memberId.isEmpty) return false;
+
+    final reconciled = await _reconcileCanonicalMemberIdentity(
+      roomName: roomName,
+      memberId: memberId,
+    );
+    final ensuredRole = await _ensureMemberRoleAfterJoin(
+      roomName: roomName,
+      memberId: memberId,
+    );
+
+    return reconciled || ensuredRole;
+  }
+
+  Future<bool> ensureHostBootstrapAfterReconnect({
+    required String roomName,
+    required String hostId,
+    required String groupName,
+  }) async {
+    if (roomName.isEmpty || hostId.isEmpty) return false;
+
+    try {
+      final settings = await _getGroupSettings(roomName);
+      var changed = false;
+
+      if (settings == null) {
+        final created = GroupSettings(
+          id: 'group_settings',
+          name: groupName.isEmpty ? roomName : groupName,
+          createdAt: _hybridTimeService.getAdjustedTimeLocal(),
+          logicalTime: _hybridTimeService.nextLogicalTime(),
+          dataRoomName: roomName,
+          ownerId: hostId,
+        );
+        await _crdtService.put(
+          roomName,
+          'group_settings',
+          jsonEncode(created.toMap()),
+          tableName: 'group_settings',
+        );
+        changed = true;
+      } else if (settings.ownerId.isEmpty) {
+        final updated = settings.copyWith(
+          ownerId: hostId,
+          logicalTime: _hybridTimeService.nextLogicalTime(),
+        );
+        await _crdtService.put(
+          roomName,
+          'group_settings',
+          jsonEncode(updated.toMap()),
+          tableName: 'group_settings',
+        );
+        changed = true;
+      }
+
+      final roleRows = await _crdtService.query(
+        roomName,
+        'SELECT value FROM roles WHERE is_deleted = 0',
+      );
+      if (roleRows.isEmpty) {
+        final ownerRole = Role(
+          id: 'role:owner',
+          groupId: roomName,
+          name: 'Owner',
+          color: 0xFFFFD700,
+          position: 100,
+          permissions: PermissionFlags.administrator,
+          isHoisted: true,
+        );
+        final memberRole = Role(
+          id: 'role:member',
+          groupId: roomName,
+          name: 'Member',
+          color: 0xFF9E9E9E,
+          position: 10,
+          permissions: PermissionFlags.defaultMember,
+        );
+
+        await _crdtService.put(
+          roomName,
+          ownerRole.id,
+          jsonEncode(ownerRole.toMap()),
+          tableName: 'roles',
+        );
+        await _crdtService.put(
+          roomName,
+          memberRole.id,
+          jsonEncode(memberRole.toMap()),
+          tableName: 'roles',
+        );
+        await _crdtService.put(
+          roomName,
+          hostId,
+          jsonEncode(GroupMember(id: hostId, roleIds: [ownerRole.id]).toMap()),
+          tableName: 'members',
+        );
+        changed = true;
+      } else {
+        final ensured = await _ensureMemberRoleAfterJoin(
+          roomName: roomName,
+          memberId: hostId,
+        );
+        changed = changed || ensured;
+      }
+
+      return changed;
+    } catch (e) {
+      Log.w(
+        'InviteJoinProcess',
+        'Failed host bootstrap repair for $hostId in $roomName: $e',
+      );
+      return false;
     }
   }
 
@@ -465,5 +596,170 @@ class InviteJoinProcess implements SyncProcess {
       'InviteJoinProcess',
       'Timed out ensuring member roles for $memberId in $roomName.',
     );
+  }
+
+  Future<void> _retryEnsureMembershipAfterReconnect({
+    required String roomName,
+    required String memberId,
+  }) async {
+    if (roomName.isEmpty || memberId.isEmpty) return;
+    for (var attempt = 0; attempt < 20; attempt++) {
+      final repaired = await ensureMembershipAfterReconnect(
+        roomName: roomName,
+        memberId: memberId,
+      );
+      if (repaired) return;
+      await Future.delayed(const Duration(seconds: 1));
+    }
+    Log.w(
+      'InviteJoinProcess',
+      'Timed out repairing member identity/roles for $memberId in $roomName after reconnect.',
+    );
+  }
+
+  Future<bool> _reconcileCanonicalMemberIdentity({
+    required String roomName,
+    required String memberId,
+  }) async {
+    if (roomName.isEmpty || memberId.isEmpty) return false;
+    final canonical = _canonicalIdentity(memberId);
+    if (canonical.isEmpty) return false;
+
+    try {
+      final normalizedId = memberId.trim();
+
+      final currentRows = await _crdtService.query(
+        roomName,
+        'SELECT value FROM members WHERE id = ?',
+        [normalizedId],
+      );
+      if (currentRows.isNotEmpty) {
+        final currentValue = currentRows.first['value'] as String? ?? '';
+        if (currentValue.isNotEmpty) {
+          try {
+            final currentMember = GroupMemberMapper.fromJson(currentValue);
+            if (currentMember.roleIds.isNotEmpty) {
+              return true;
+            }
+          } catch (_) {}
+        }
+      }
+
+      final candidateIds = <String>{normalizedId, canonical, 'user:$canonical'};
+
+      GroupMember? sourceMember;
+      String? sourceId;
+      for (final candidateId in candidateIds) {
+        final rows = await _crdtService.query(
+          roomName,
+          'SELECT value FROM members WHERE id = ?',
+          [candidateId],
+        );
+        if (rows.isEmpty) continue;
+        final value = rows.first['value'] as String? ?? '';
+        if (value.isEmpty) continue;
+        try {
+          final member = GroupMemberMapper.fromJson(value);
+          if (member.roleIds.isEmpty) continue;
+          sourceMember = member;
+          sourceId = candidateId;
+          break;
+        } catch (_) {}
+      }
+
+      sourceMember ??= await _findCanonicalMemberFromFullScan(
+        roomName: roomName,
+        canonicalIdentity: canonical,
+      );
+      if (sourceMember != null && sourceId == null) {
+        sourceId = sourceMember.id;
+      }
+
+      if (sourceMember == null || sourceMember.roleIds.isEmpty) {
+        return false;
+      }
+
+      final mappedMember = GroupMember(
+        id: normalizedId,
+        roleIds: sourceMember.roleIds,
+      );
+      await _crdtService.put(
+        roomName,
+        normalizedId,
+        jsonEncode(mappedMember.toMap()),
+        tableName: 'members',
+      );
+
+      if (sourceId != null && sourceId != normalizedId) {
+        Log.i(
+          'InviteJoinProcess',
+          'Mapped canonical member identity $sourceId -> $normalizedId in $roomName.',
+        );
+      }
+      return true;
+    } catch (e) {
+      Log.w(
+        'InviteJoinProcess',
+        'Failed canonical member reconciliation for $memberId in $roomName: $e',
+      );
+      return false;
+    }
+  }
+
+  Future<GroupMember?> _findCanonicalMemberFromFullScan({
+    required String roomName,
+    required String canonicalIdentity,
+  }) async {
+    final rows = await _crdtService.query(
+      roomName,
+      'SELECT id, value FROM members',
+    );
+    for (final row in rows) {
+      final rowId = row['id'] as String? ?? '';
+      if (_canonicalIdentity(rowId) != canonicalIdentity) continue;
+      final value = row['value'] as String? ?? '';
+      if (value.isEmpty) continue;
+      try {
+        return GroupMemberMapper.fromJson(value);
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  String _canonicalIdentity(String raw) {
+    final value = raw.trim().toLowerCase();
+    if (value.startsWith('user:')) {
+      return value.substring(5);
+    }
+    return value;
+  }
+
+  Future<GroupSettings?> _getGroupSettings(String roomName) async {
+    final canonicalRows = await _crdtService.query(
+      roomName,
+      'SELECT value FROM group_settings WHERE id = ?',
+      ['group_settings'],
+    );
+    if (canonicalRows.isNotEmpty) {
+      final value = canonicalRows.first['value'] as String? ?? '';
+      if (value.isNotEmpty) {
+        try {
+          return GroupSettingsMapper.fromJson(value);
+        } catch (_) {}
+      }
+    }
+
+    final rows = await _crdtService.query(
+      roomName,
+      'SELECT value FROM group_settings',
+    );
+    for (final row in rows) {
+      final value = row['value'] as String? ?? '';
+      if (value.isEmpty) continue;
+      try {
+        return GroupSettingsMapper.fromJson(value);
+      } catch (_) {}
+    }
+    return null;
   }
 }
