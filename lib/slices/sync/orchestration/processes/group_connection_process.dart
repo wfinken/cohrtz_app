@@ -74,6 +74,7 @@ class GroupConnectionProcess {
       if (knownDataRoom.isNotEmpty && inviteCode.isEmpty) {
         final dataId = knownDataRoom['roomName'] ?? '';
         if (dataId.isNotEmpty) {
+          final isHost = knownDataRoom['isHost'] == 'true';
           final existingIdentity = knownDataRoom['identity'];
           final profile = await _groupIdentityService.ensureForGroup(
             groupId: dataId,
@@ -91,6 +92,18 @@ class GroupConnectionProcess {
             dataId,
             identity: profile.id,
             friendlyName: roomName,
+            isHost: isHost,
+          );
+          if (isHost) {
+            await _inviteJoinProcess.ensureHostBootstrapAfterReconnect(
+              roomName: dataId,
+              hostId: profile.id,
+              groupName: roomName,
+            );
+          }
+          await _inviteJoinProcess.ensureMembershipAfterReconnect(
+            roomName: dataId,
+            memberId: profile.id,
           );
 
           if (dataId != roomName) {
@@ -185,6 +198,7 @@ class GroupConnectionProcess {
             'friendlyName': best['friendlyName'],
             'identity': best['identity'],
             'isInviteRoom': best['isInviteRoom'],
+            'isHost': best['isHost'],
             'token': best['token'], // Might be null, will be refreshed below
           };
         }
@@ -214,6 +228,7 @@ class GroupConnectionProcess {
         ? savedIdentity
         : (await _groupIdentityService.ensureForGroup(groupId: roomName)).id;
     final isInviteRoom = savedDetails['isInviteRoom'] == 'true';
+    var isHost = savedDetails['isHost'] == 'true';
 
     // Fallback: If friendlyName is still a UUID (matches roomName), try looking it up in known groups.
     // This handles cases where last_group_friendly_name was saved as UUID but we have the real name in store.
@@ -232,9 +247,25 @@ class GroupConnectionProcess {
         if (match.isNotEmpty && match['friendlyName'] != null) {
           friendlyName = match['friendlyName']!;
         }
+        if (!isHost && match.isNotEmpty && match['isHost'] == 'true') {
+          isHost = true;
+        }
       } catch (_) {
         // Ignore lookup errors, keep existing name
       }
+    }
+
+    if (!isHost) {
+      try {
+        final dataGroups = await _syncService.getKnownGroups();
+        final known = dataGroups.firstWhere(
+          (g) => g['roomName'] == roomName,
+          orElse: () => {},
+        );
+        if (known.isNotEmpty && known['isHost'] == 'true') {
+          isHost = true;
+        }
+      } catch (_) {}
     }
 
     _onStepUpdate(1, StepStatus.current); // Validating credentials (token)
@@ -266,13 +297,29 @@ class GroupConnectionProcess {
         );
       } else {
         // _onStatusChanged('Connecting to $friendlyName...');
-        await _syncService.connect(token, roomName, identity: identity);
+        await _syncService.connect(
+          token,
+          roomName,
+          identity: identity,
+          isHost: isHost,
+        );
       }
 
       if (!isInviteRoom) {
+        if (isHost) {
+          await _inviteJoinProcess.ensureHostBootstrapAfterReconnect(
+            roomName: roomName,
+            hostId: identity,
+            groupName: friendlyName,
+          );
+        }
         await _groupIdentityService.ensureForGroup(
           groupId: roomName,
           fallbackIdentity: identity,
+        );
+        await _inviteJoinProcess.ensureMembershipAfterReconnect(
+          roomName: roomName,
+          memberId: identity,
         );
       }
       _onStepUpdate(2, StepStatus.completed);

@@ -13,7 +13,7 @@ class PermissionService {
 
   Future<int> calculatePermissions(String roomName, String memberId) async {
     final ownerId = await _getOwnerId(roomName);
-    if (ownerId != null && ownerId.isNotEmpty && ownerId == memberId) {
+    if (_sameIdentity(ownerId, memberId)) {
       return PermissionFlags.all;
     }
 
@@ -76,8 +76,8 @@ class PermissionService {
   }) async {
     final ownerId = await _getOwnerId(roomName);
     if (ownerId != null && ownerId.isNotEmpty) {
-      if (actorId == ownerId) return true;
-      if (targetId == ownerId) return false;
+      if (_sameIdentity(actorId, ownerId)) return true;
+      if (_sameIdentity(targetId, ownerId)) return false;
     }
 
     final roles = await _getRoles(roomName);
@@ -99,7 +99,7 @@ class PermissionService {
     required Role targetRole,
   }) async {
     final ownerId = await _getOwnerId(roomName);
-    if (ownerId != null && ownerId.isNotEmpty && actorId == ownerId) {
+    if (_sameIdentity(actorId, ownerId)) {
       return true;
     }
 
@@ -124,15 +124,32 @@ class PermissionService {
   }
 
   Future<GroupMember?> _getMember(String roomName, String memberId) async {
+    final candidateIds = _memberLookupCandidates(memberId);
+    for (final candidateId in candidateIds) {
+      final rows = await _crdtService.query(
+        roomName,
+        'SELECT value FROM members WHERE id = ?',
+        [candidateId],
+      );
+      if (rows.isEmpty) continue;
+      final value = rows.first['value'] as String? ?? '';
+      if (value.isEmpty) continue;
+      return GroupMemberMapper.fromJson(value);
+    }
+
     final rows = await _crdtService.query(
       roomName,
-      'SELECT value FROM members WHERE id = ?',
-      [memberId],
+      'SELECT id, value FROM members',
     );
-    if (rows.isEmpty) return null;
-    final value = rows.first['value'] as String? ?? '';
-    if (value.isEmpty) return null;
-    return GroupMemberMapper.fromJson(value);
+    final canonicalMemberId = _canonicalIdentity(memberId);
+    for (final row in rows) {
+      final rowId = row['id'] as String? ?? '';
+      if (!_sameCanonicalIdentity(canonicalMemberId, rowId)) continue;
+      final value = row['value'] as String? ?? '';
+      if (value.isEmpty) continue;
+      return GroupMemberMapper.fromJson(value);
+    }
+    return null;
   }
 
   Future<List<Role>> _getRoles(String roomName) async {
@@ -174,5 +191,32 @@ class PermissionService {
     } catch (_) {
       return null;
     }
+  }
+
+  bool _sameIdentity(String? a, String? b) {
+    if (a == null || b == null || a.isEmpty || b.isEmpty) return false;
+    return _canonicalIdentity(a) == _canonicalIdentity(b);
+  }
+
+  bool _sameCanonicalIdentity(String canonical, String raw) {
+    if (canonical.isEmpty || raw.isEmpty) return false;
+    return canonical == _canonicalIdentity(raw);
+  }
+
+  String _canonicalIdentity(String raw) {
+    final value = raw.trim().toLowerCase();
+    if (value.startsWith('user:')) {
+      return value.substring(5);
+    }
+    return value;
+  }
+
+  List<String> _memberLookupCandidates(String memberId) {
+    final canonical = _canonicalIdentity(memberId);
+    if (canonical.isEmpty) return const [];
+    final candidates = <String>{memberId.trim(), canonical, 'user:$canonical'};
+    return candidates
+        .where((value) => value.isNotEmpty)
+        .toList(growable: false);
   }
 }

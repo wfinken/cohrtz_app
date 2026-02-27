@@ -148,6 +148,15 @@ class DataBroadcaster {
         );
         return;
       } catch (e) {
+        if (_isMissingGroupKeyError(e)) {
+          _bufferPacket(roomName, packet);
+          _runRetrySafely(
+            roomName,
+            'await group key and retry',
+            () => _awaitGroupKeyAndRetry(roomName),
+          );
+          return;
+        }
         Log.w(
           'DataBroadcaster',
           'Failed to broadcast SYNC packet with GSK in $roomName: $e. Buffering...',
@@ -193,22 +202,17 @@ class DataBroadcaster {
         );
         return;
       } catch (e) {
-        final missingGroupKey =
-            e is StateError &&
-            e.toString().contains('Group Secret Key not available immediately');
+        final missingGroupKey = _isMissingGroupKeyError(e);
         if (missingGroupKey) {
           if (packet.type != P2PPacket_PacketType.CONSISTENCY_CHECK) {
             _bufferPacket(roomName, packet);
           }
-          unawaited(
-            _getGroupKey(
-              roomName,
-              allowWait: true,
-            ).then((_) => retryBufferedPackets(roomName)).catchError((_) {}),
+          _runRetrySafely(
+            roomName,
+            'await group key and retry',
+            () => _awaitGroupKeyAndRetry(roomName),
           );
-          if (packet.type == P2PPacket_PacketType.CONSISTENCY_CHECK) {
-            return;
-          }
+          return;
         }
         Log.w(
           'DataBroadcaster',
@@ -238,6 +242,35 @@ class DataBroadcaster {
   final Map<String, List<P2PPacket>> _outgoingQueue = {};
   final Map<String, Map<String, List<P2PPacket>>> _pendingUnicast = {};
   Timer? _flushTimer;
+
+  bool _isMissingGroupKeyError(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('group secret key not available immediately') ||
+        message.contains('group secret key not available for') ||
+        message.contains('group secret key not available');
+  }
+
+  Future<void> _awaitGroupKeyAndRetry(String roomName) async {
+    await _getGroupKey(roomName, allowWait: true);
+    await retryBufferedPackets(roomName);
+  }
+
+  void _runRetrySafely(
+    String roomName,
+    String operationName,
+    Future<void> Function() operation,
+  ) {
+    unawaited(
+      Future.sync(operation).catchError((Object error, StackTrace stackTrace) {
+        Log.e(
+          'DataBroadcaster',
+          'Error during $operationName for $roomName',
+          error,
+          stackTrace,
+        );
+      }),
+    );
+  }
 
   void _bufferPacket(String roomName, P2PPacket packet) {
     _outgoingQueue.putIfAbsent(roomName, () => []);
@@ -271,10 +304,18 @@ class DataBroadcaster {
 
       // Retry all rooms
       for (final roomName in _outgoingQueue.keys.toList()) {
-        retryBufferedPackets(roomName);
+        _runRetrySafely(
+          roomName,
+          'retryBufferedPackets',
+          () => retryBufferedPackets(roomName),
+        );
       }
       for (final roomName in _pendingUnicast.keys.toList()) {
-        retryPendingUnicast(roomName);
+        _runRetrySafely(
+          roomName,
+          'retryPendingUnicast',
+          () => retryPendingUnicast(roomName),
+        );
       }
     });
   }

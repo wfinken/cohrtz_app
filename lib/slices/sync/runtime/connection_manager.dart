@@ -375,6 +375,10 @@ class ConnectionManager extends ChangeNotifier {
     bool isHost = false,
     bool setActive = true,
   }) async {
+    final persistedIsHost =
+        _groupManager.findGroup(roomName)['isHost'] == 'true';
+    final effectiveIsHost = isHost || persistedIsHost;
+
     // Guard: Connection in progress (Check early)
     if (_connectingRooms.contains(roomName)) {
       Log.w(
@@ -445,7 +449,10 @@ class ConnectionManager extends ChangeNotifier {
           'last_group_is_invite',
           isInviteRoom.toString(),
         );
-        await _secureStorage.write('last_group_is_host', isHost.toString());
+        await _secureStorage.write(
+          'last_group_is_host',
+          effectiveIsHost.toString(),
+        );
       } else {
         Log.i(
           'ConnectionManager',
@@ -460,7 +467,7 @@ class ConnectionManager extends ChangeNotifier {
         identity ?? 'unknown',
         friendlyName: friendlyName,
         isInviteRoom: isInviteRoom,
-        isHost: isHost,
+        isHost: effectiveIsHost,
         token: effectiveToken,
       );
 
@@ -496,7 +503,7 @@ class ConnectionManager extends ChangeNotifier {
           roomName,
           databaseName: dataRoomName,
         );
-        await onInitializeSync(roomName, isHost);
+        await onInitializeSync(roomName, effectiveIsHost);
       }
 
       if (syncData && setActive) _activeRoomName = roomName;

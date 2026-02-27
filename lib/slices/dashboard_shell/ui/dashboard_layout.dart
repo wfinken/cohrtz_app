@@ -554,6 +554,7 @@ class _DashboardLayoutState extends ConsumerState<DashboardLayout> {
   ) {
     return Consumer(
       builder: (context, ref, child) {
+        final permissionsAsync = ref.watch(currentUserPermissionsProvider);
         final widgetsAsync = ref.watch(
           dashboardWidgetsProvider((
             groupId:
@@ -569,6 +570,36 @@ class _DashboardLayoutState extends ConsumerState<DashboardLayout> {
               if (widget.type == 'chat') return false;
               return canView != false;
             }).toList();
+
+            if (filteredWidgets.isEmpty) {
+              final hasNoPermissions = permissionsAsync.maybeWhen(
+                data: (permissions) => permissions == PermissionFlags.none,
+                orElse: () => false,
+              );
+              if (hasNoPermissions) {
+                return const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 16),
+                      Text('Syncing group access and encrypted state...'),
+                    ],
+                  ),
+                );
+              }
+              return const Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('Waiting for dashboard widgets to sync...'),
+                  ],
+                ),
+              );
+            }
+
             return DashboardGridView(
               widgets: filteredWidgets,
               requiresScaling: data.requiresScaling,
