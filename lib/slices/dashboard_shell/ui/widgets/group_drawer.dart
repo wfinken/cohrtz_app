@@ -13,7 +13,6 @@ import 'package:cohortz/slices/dashboard_shell/models/system_model.dart';
 import 'package:cohortz/slices/dashboard_shell/models/user_model.dart';
 import '../dashboard_edit_notifier.dart';
 import '../dialogs/group_settings_dialog.dart';
-import 'package:cohortz/slices/members/ui/dialogs/invite_dialog.dart';
 import 'package:cohortz/slices/members/ui/dialogs/role_management_dialog.dart';
 import 'package:cohortz/slices/members/ui/dialogs/group_user_editor_dialog.dart';
 import '../dialogs/app_user_settings_dialog.dart';
@@ -74,11 +73,6 @@ class GroupDrawer extends ConsumerWidget {
     final canManageGroup = permissionsAsync.maybeWhen(
       data: (permissions) =>
           PermissionUtils.has(permissions, PermissionFlags.manageGroup),
-      orElse: () => false,
-    );
-    final canManageInvites = permissionsAsync.maybeWhen(
-      data: (permissions) =>
-          PermissionUtils.has(permissions, PermissionFlags.manageInvites),
       orElse: () => false,
     );
 
@@ -191,19 +185,6 @@ class GroupDrawer extends ConsumerWidget {
                             );
                           }),
                     ] else ...[
-                      if (canManageInvites)
-                        GroupDrawerItem(
-                          icon: Icons.person_add,
-                          label: 'Invite',
-                          isSelected: false,
-                          onTap: () {
-                            showDialog(
-                              context: context,
-                              builder: (_) => const InviteDialog(),
-                            );
-                            onItemSelected?.call();
-                          },
-                        ),
                       GroupDrawerItem(
                         icon: Icons.grid_view,
                         label: 'Dashboard',
@@ -279,19 +260,6 @@ class GroupDrawer extends ConsumerWidget {
                   },
                 ),
 
-                if (canManageInvites)
-                  GroupDrawerItem(
-                    icon: Icons.person_add,
-                    label: 'Invite',
-                    isSelected: false,
-                    onTap: () {
-                      showDialog(
-                        context: context,
-                        builder: (_) => const InviteDialog(),
-                      );
-                      onItemSelected?.call();
-                    },
-                  ),
                 if (canManageRoles)
                   GroupDrawerItem(
                     icon: Icons.shield_outlined,
