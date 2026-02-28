@@ -713,14 +713,36 @@ class ConnectionManager extends ChangeNotifier {
       );
       for (final group in inviteGroups) {
         final roomName = group['roomName'];
-        if (roomName != null && !isConnected(roomName)) {
-          if (!_connectingRooms.contains(roomName)) {
+        if (roomName == null || roomName.isEmpty) continue;
+
+        final hasMatchingDataGroup = dataGroups.any((dataGroup) {
+          final dataRoomName = dataGroup['roomName'];
+          final friendlyName = dataGroup['friendlyName'];
+          return dataRoomName == roomName || friendlyName == roomName;
+        });
+
+        if (!hasMatchingDataGroup) {
+          if (isConnected(roomName)) {
             Log.i(
               'ConnectionManager',
-              'Janitor reconnecting Invite Room: $roomName',
+              'Janitor disconnecting orphan Invite Room: $roomName',
             );
-            await _reconnectGroup(group, isInviteRoom: true);
+            await disconnectRoom(roomName);
           }
+          Log.i(
+            'ConnectionManager',
+            'Janitor pruning orphan Invite Room metadata: $roomName',
+          );
+          await _groupManager.forgetGroup(roomName);
+          continue;
+        }
+
+        if (!isConnected(roomName) && !_connectingRooms.contains(roomName)) {
+          Log.i(
+            'ConnectionManager',
+            'Janitor reconnecting Invite Room: $roomName',
+          );
+          await _reconnectGroup(group, isInviteRoom: true);
         }
       }
     } finally {
