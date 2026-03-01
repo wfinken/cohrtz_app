@@ -15,6 +15,9 @@ import 'treekem_handler.dart';
 ///
 /// Extracted from SyncService for modularity and clearer responsibility.
 class KeyManager {
+  static const Duration _groupKeyWaitTimeout = Duration(seconds: 30);
+  static const Duration _groupKeyRequestRetryInterval = Duration(seconds: 3);
+
   final EncryptionService _encryptionService;
   final SecureStorageService _secureStorage;
   final TreeKemHandler _treeKemHandler;
@@ -202,18 +205,70 @@ class KeyManager {
 
     try {
       // Timeout after 30 seconds
-      // This gives enough time for the Invite Handshake -> Data Room Transition -> Key Exchange
+      // This gives enough time for the Invite Handshake -> Data Room Transition -> Key Exchange.
+      // The first waiter periodically re-requests the key so transient reconnect races recover.
+      if (createdHere) {
+        return await _waitForGroupKeyWithRetries(roomName, completer);
+      }
       return await completer.future.timeout(
-        const Duration(seconds: 30),
-        onTimeout: () {
-          if (createdHere && _gskCompleters[roomName] == completer) {
-            _gskCompleters.remove(roomName);
-          }
-          throw TimeoutException('Timed out waiting for GSK in $roomName');
-        },
+        _groupKeyWaitTimeout,
+        onTimeout: () =>
+            throw TimeoutException('Timed out waiting for GSK in $roomName'),
       );
     } catch (e) {
+      if (createdHere && _gskCompleters[roomName] == completer) {
+        _gskCompleters.remove(roomName);
+      }
       throw StateError('Group Secret Key not available for $roomName: $e');
+    }
+  }
+
+  Future<SecretKey> _waitForGroupKeyWithRetries(
+    String roomName,
+    Completer<SecretKey> completer,
+  ) async {
+    final deadline = DateTime.now().add(_groupKeyWaitTimeout);
+
+    while (true) {
+      final cached = _groupKeys[roomName];
+      if (cached != null) return cached;
+
+      final remaining = deadline.difference(DateTime.now());
+      if (remaining <= Duration.zero) {
+        throw TimeoutException('Timed out waiting for GSK in $roomName');
+      }
+
+      try {
+        await _requestGroupKey(roomName, force: true);
+      } catch (e) {
+        Log.w('KeyManager', 'Failed to request GSK for $roomName: $e');
+      }
+
+      final window = remaining < _groupKeyRequestRetryInterval
+          ? remaining
+          : _groupKeyRequestRetryInterval;
+
+      try {
+        return await completer.future.timeout(window);
+      } on TimeoutException {
+        // Keep polling for races where key reached storage/memory but completer
+        // completion did not propagate to this waiter yet.
+        final raceResolved = _groupKeys[roomName];
+        if (raceResolved != null) {
+          return raceResolved;
+        }
+
+        final gskStr = await _secureStorage.read('gsk_$roomName');
+        if (gskStr != null) {
+          final key = SecretKey(base64Decode(gskStr));
+          _groupKeys[roomName] = key;
+          if (!completer.isCompleted) {
+            completer.complete(key);
+          }
+          _gskCompleters.remove(roomName);
+          return key;
+        }
+      }
     }
   }
 
@@ -319,6 +374,11 @@ class KeyManager {
     final key = SecretKey(keyBytes);
     _groupKeys[roomName] = key;
     await _secureStorage.write('gsk_$roomName', keyStr);
+    final completer = _gskCompleters[roomName];
+    if (completer != null && !completer.isCompleted) {
+      completer.complete(key);
+      _gskCompleters.remove(roomName);
+    }
     Log.d(
       'KeyManager',
       'Received and saved Group Secret Key (GSK) for $roomName',

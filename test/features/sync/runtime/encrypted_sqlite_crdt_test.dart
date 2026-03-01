@@ -59,4 +59,42 @@ void main() {
       }
     }
   });
+
+  test('Sqlite3ExecutorApi serializes overlapping transactions', () async {
+    final db = sqlite3.openInMemory();
+    final api = Sqlite3ExecutorApi(db);
+
+    try {
+      await api.execute('''
+        CREATE TABLE test_records (
+          id INTEGER PRIMARY KEY,
+          value TEXT
+        )
+      ''');
+
+      final first = api.transaction((txn) async {
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+        await txn.execute(
+          'INSERT INTO test_records (id, value) VALUES (?1, ?2)',
+          [1, 'first'],
+        );
+      });
+
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      final second = api.transaction((txn) async {
+        await txn.execute(
+          'INSERT INTO test_records (id, value) VALUES (?1, ?2)',
+          [2, 'second'],
+        );
+      });
+
+      await Future.wait<void>([first, second]);
+
+      final rows = await api.query('SELECT id FROM test_records ORDER BY id');
+      expect(rows.length, 2);
+      expect(rows.map((row) => row['id']), [1, 2]);
+    } finally {
+      db.dispose();
+    }
+  });
 }

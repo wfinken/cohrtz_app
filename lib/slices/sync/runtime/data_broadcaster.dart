@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:cohortz/src/generated/p2p_packet.pb.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:cryptography/cryptography.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../shared/utils/logging_service.dart';
 import '../../../shared/utils/sync_diagnostics.dart';
@@ -150,11 +151,7 @@ class DataBroadcaster {
       } catch (e) {
         if (_isMissingGroupKeyError(e)) {
           _bufferPacket(roomName, packet);
-          _runRetrySafely(
-            roomName,
-            'await group key and retry',
-            () => _awaitGroupKeyAndRetry(roomName),
-          );
+          _scheduleGroupKeyRetry(roomName);
           return;
         }
         Log.w(
@@ -204,14 +201,27 @@ class DataBroadcaster {
       } catch (e) {
         final missingGroupKey = _isMissingGroupKeyError(e);
         if (missingGroupKey) {
+          if (packet.type == P2PPacket_PacketType.DATA_CHUNK) {
+            final remoteParticipants = room.remoteParticipants.values.toList(
+              growable: false,
+            );
+            if (remoteParticipants.isNotEmpty) {
+              Log.i(
+                'DataBroadcaster',
+                'Group key unavailable for $roomName while sending DATA_CHUNK. Falling back to pairwise secure delivery.',
+              );
+              for (final participant in remoteParticipants) {
+                final targetIdentity = participant.identity;
+                if (targetIdentity.isEmpty) continue;
+                await sendSecurePacket(roomName, targetIdentity, packet);
+              }
+              return;
+            }
+          }
           if (packet.type != P2PPacket_PacketType.CONSISTENCY_CHECK) {
             _bufferPacket(roomName, packet);
           }
-          _runRetrySafely(
-            roomName,
-            'await group key and retry',
-            () => _awaitGroupKeyAndRetry(roomName),
-          );
+          _scheduleGroupKeyRetry(roomName);
           return;
         }
         Log.w(
@@ -241,6 +251,8 @@ class DataBroadcaster {
 
   final Map<String, List<P2PPacket>> _outgoingQueue = {};
   final Map<String, Map<String, List<P2PPacket>>> _pendingUnicast = {};
+  final Map<String, Future<void>> _groupKeyRetryInFlight = {};
+  final Map<String, Map<String, DateTime>> _lastHandshakeRequestAt = {};
   Timer? _flushTimer;
 
   bool _isMissingGroupKeyError(Object error) {
@@ -251,8 +263,36 @@ class DataBroadcaster {
   }
 
   Future<void> _awaitGroupKeyAndRetry(String roomName) async {
-    await _getGroupKey(roomName, allowWait: true);
+    try {
+      await _getGroupKey(roomName, allowWait: true);
+    } catch (error) {
+      if (_isMissingGroupKeyError(error)) {
+        Log.i(
+          'DataBroadcaster',
+          'Group key still unavailable for $roomName; keeping packets buffered.',
+        );
+        return;
+      }
+      rethrow;
+    }
     await retryBufferedPackets(roomName);
+  }
+
+  void _scheduleGroupKeyRetry(String roomName) {
+    if (_groupKeyRetryInFlight.containsKey(roomName)) {
+      return;
+    }
+
+    final operation = Future<void>.sync(() async {
+      try {
+        await _awaitGroupKeyAndRetry(roomName);
+      } finally {
+        _groupKeyRetryInFlight.remove(roomName);
+      }
+    });
+    _groupKeyRetryInFlight[roomName] = operation;
+
+    _runRetrySafely(roomName, 'await group key and retry', () => operation);
   }
 
   void _runRetrySafely(
@@ -396,6 +436,11 @@ class DataBroadcaster {
         'WARNING: No encryption key for $targetIdentity',
       );
       _bufferUnicast(roomName, targetIdentity, packet);
+      _runRetrySafely(
+        roomName,
+        'requestHandshakeForMissingKey',
+        () => _requestHandshakeFromPeer(roomName, targetIdentity),
+      );
       return;
     }
 
@@ -486,6 +531,48 @@ class DataBroadcaster {
     _startFlushTimer();
   }
 
+  Future<void> _requestHandshakeFromPeer(
+    String roomName,
+    String targetIdentity, {
+    bool force = false,
+  }) async {
+    final room = _getConnectionManager().getRoom(roomName);
+    if (room == null || room.connectionState != ConnectionState.connected) {
+      return;
+    }
+
+    final now = DateTime.now();
+    final byTarget = _lastHandshakeRequestAt.putIfAbsent(roomName, () => {});
+    final last = byTarget[targetIdentity];
+    if (!force &&
+        last != null &&
+        now.difference(last) < const Duration(seconds: 3)) {
+      return;
+    }
+    byTarget[targetIdentity] = now;
+
+    final packet = P2PPacket()
+      ..type = P2PPacket_PacketType.HANDSHAKE
+      ..requestId = const Uuid().v4()
+      ..senderId = _resolveSenderIdentity(
+        roomName,
+        room,
+        _getLocalParticipantIdForRoom(roomName),
+      )
+      ..payload = const <int>[];
+
+    await _securityService.signPacket(packet, groupId: roomName);
+    await _publishWithRetry(
+      room,
+      packet.writeToBuffer(),
+      destinationIdentities: [targetIdentity],
+    );
+    Log.d(
+      'DataBroadcaster',
+      'Requested HANDSHAKE from $targetIdentity in $roomName due to missing pairwise key.',
+    );
+  }
+
   bool _shouldDeDuplicateControlPacket(P2PPacket packet) {
     return packet.type == P2PPacket_PacketType.HANDSHAKE ||
         packet.type == P2PPacket_PacketType.SYNC_REQ ||
@@ -509,7 +596,14 @@ class DataBroadcaster {
       if (queue == null || queue.isEmpty) continue;
 
       // Only retry if we now have an encryption key
-      if (_getEncryptionKey(roomName, target) == null) continue;
+      if (_getEncryptionKey(roomName, target) == null) {
+        _runRetrySafely(
+          roomName,
+          'requestHandshakeForMissingKey',
+          () => _requestHandshakeFromPeer(roomName, target),
+        );
+        continue;
+      }
 
       final toRetry = List<P2PPacket>.from(queue);
       queue.clear();

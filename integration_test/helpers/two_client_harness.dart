@@ -49,81 +49,102 @@ class E2eClientContext {
 
 class TwoClientHarness {
   TwoClientHarness._({
-    required this.clientA,
-    required this.clientB,
+    required this.clients,
     required this.config,
+    required this.room,
   });
 
-  final E2eClientContext clientA;
-  final E2eClientContext clientB;
+  final List<E2eClientContext> clients;
   final E2eEnvConfig config;
+  final String room;
+
+  E2eClientContext get clientA => clients.first;
+  E2eClientContext get clientB => clients[1];
 
   static Future<TwoClientHarness> start(E2eEnvConfig config) async {
     SharedPreferences.setMockInitialValues({});
+    // Clear persisted encrypted blobs so mocked prefs-derived keys always match.
+    await SecureStorageService().deleteAll();
 
-    final clientA = await _createClient(
-      label: 'clientA',
-      identity: config.identityA,
-      room: config.room,
-      dataRoomName: '${config.room}__client_a',
+    final runId = DateTime.now().microsecondsSinceEpoch;
+    final room = '${config.roomPrefix}-$runId';
+    final identities = List<String>.generate(
+      config.userCount,
+      (index) => 'e2e-user-$runId-${index + 1}',
     );
-    final clientB = await _createClient(
-      label: 'clientB',
-      identity: config.identityB,
-      room: config.room,
-      dataRoomName: '${config.room}__client_b',
-    );
+    final clients = <E2eClientContext>[];
+    for (var i = 0; i < identities.length; i++) {
+      clients.add(
+        await _createClient(
+          label: 'client${i + 1}',
+          identity: identities[i],
+          room: room,
+          dataRoomName: '${room}__client_${i + 1}',
+        ),
+      );
+    }
 
     try {
-      final tokenResults = await Future.wait<String>([
-        _fetchToken(config.room, config.identityA),
-        _fetchToken(config.room, config.identityB),
-      ]);
+      final tokenResults = <String>[];
+      for (final identity in identities) {
+        tokenResults.add(await _fetchToken(room, identity));
+      }
+      for (var i = 0; i < clients.length; i++) {
+        final client = clients[i];
+        await client.sync.connect(
+          tokenResults[i],
+          room,
+          identity: identities[i],
+          friendlyName: room,
+          dataRoomName: client.dataRoomName,
+        );
+      }
 
-      await clientA.sync.connect(
-        tokenResults[0],
-        config.room,
-        identity: config.identityA,
-        friendlyName: config.room,
-        dataRoomName: clientA.dataRoomName,
-      );
-      await clientB.sync.connect(
-        tokenResults[1],
-        config.room,
-        identity: config.identityB,
-        friendlyName: config.room,
-        dataRoomName: clientB.dataRoomName,
-      );
+      final requiredRemoteParticipants = config.userCount - 1;
 
       await expectEventually(
-        description: 'both clients should connect and discover each other',
+        description:
+            'all ${config.userCount} clients should connect and discover each other',
+        timeout: _connectionTimeout(config.userCount),
+        interval: _connectionInterval(config.userCount),
         condition: () async {
-          return clientA.sync.isConnected &&
-              clientB.sync.isConnected &&
-              clientA.sync.getRemoteParticipantCount(config.room) >= 1 &&
-              clientB.sync.getRemoteParticipantCount(config.room) >= 1;
+          final connectedResults = await Future.wait<bool>(
+            clients.map((client) async {
+              return client.sync.isConnected &&
+                  client.sync.getRemoteParticipantCount(room) >=
+                      requiredRemoteParticipants;
+            }),
+          );
+          return connectedResults.every((value) => value);
         },
       );
 
-      return TwoClientHarness._(
-        clientA: clientA,
-        clientB: clientB,
-        config: config,
+      await _waitForPairwiseKeys(
+        clients: clients,
+        room: room,
+        identities: identities,
+        userCount: config.userCount,
       );
+
+      return TwoClientHarness._(clients: clients, config: config, room: room);
     } catch (_) {
-      await _safeDisconnect(clientA.sync);
-      await _safeDisconnect(clientB.sync);
-      clientA.container.dispose();
-      clientB.container.dispose();
+      await Future.wait<void>(
+        clients.map((client) => _safeDisconnect(client.sync)),
+      );
+      for (final client in clients) {
+        client.container.dispose();
+      }
       rethrow;
     }
   }
 
   Future<void> dispose() async {
-    await _safeDisconnect(clientA.sync);
-    await _safeDisconnect(clientB.sync);
-    clientA.container.dispose();
-    clientB.container.dispose();
+    await Future.wait<void>(
+      clients.map((client) => _safeDisconnect(client.sync)),
+    );
+    for (final client in clients) {
+      client.container.dispose();
+    }
   }
 
   static Future<E2eClientContext> _createClient({
@@ -132,11 +153,12 @@ class TwoClientHarness {
     required String room,
     required String dataRoomName,
   }) async {
+    final secureStorage = InMemorySecureStorageService();
     final identityService = LocalIdentityService(
       UserProfile(id: identity, displayName: label, publicKey: ''),
     );
 
-    final securityService = SecurityService();
+    final securityService = SecurityService(secureStorage: secureStorage);
     await securityService.initialize();
     final publicKey = await securityService.getPublicKey();
     await identityService.updatePublicKey(base64Encode(publicKey));
@@ -151,9 +173,7 @@ class TwoClientHarness {
         identityServiceProvider.overrideWithValue(identityService),
         securityServiceProvider.overrideWithValue(securityService),
         encryptionServiceProvider.overrideWithValue(EncryptionService()),
-        secureStorageServiceProvider.overrideWithValue(
-          InMemorySecureStorageService(),
-        ),
+        secureStorageServiceProvider.overrideWithValue(secureStorage),
         transferStatsRepositoryProvider.overrideWithValue(
           transferStatsRepository,
         ),
@@ -198,6 +218,79 @@ class TwoClientHarness {
       // Best effort teardown.
     }
   }
+}
+
+Duration _connectionTimeout(int userCount) {
+  if (userCount <= 2) {
+    return const Duration(seconds: 25);
+  }
+  final seconds = (userCount * 10).clamp(40, 240);
+  return Duration(seconds: seconds);
+}
+
+Duration _connectionInterval(int userCount) {
+  if (userCount <= 4) {
+    return const Duration(milliseconds: 250);
+  }
+  return const Duration(milliseconds: 450);
+}
+
+Future<void> _waitForPairwiseKeys({
+  required List<E2eClientContext> clients,
+  required String room,
+  required List<String> identities,
+  required int userCount,
+}) async {
+  await expectEventually(
+    description: 'all $userCount clients should exchange pairwise keys',
+    timeout: _connectionTimeout(userCount),
+    interval: _connectionInterval(userCount),
+    condition: () async {
+      var allReady = true;
+      final clientsMissingKeys = <E2eClientContext>[];
+
+      for (var i = 0; i < clients.length; i++) {
+        final client = clients[i];
+        final localIdentity = identities[i];
+        final handshake = client.container.read(handshakeHandlerProvider);
+        final missingPeerKey = identities.any(
+          (remoteIdentity) =>
+              remoteIdentity != localIdentity &&
+              handshake.getEncryptionKey(room, remoteIdentity) == null,
+        );
+        if (missingPeerKey) {
+          allReady = false;
+          clientsMissingKeys.add(client);
+        }
+      }
+
+      if (!allReady) {
+        await Future.wait(
+          clientsMissingKeys.map(
+            (client) => client.container
+                .read(handshakeHandlerProvider)
+                .requestHandshake(room, force: true),
+          ),
+        );
+        await Future.wait(
+          clients.map(
+            (client) => client.container
+                .read(syncProtocolProvider)
+                .requestSync(room, force: true),
+          ),
+        );
+        await Future.wait(
+          clients.map(
+            (client) => client.container
+                .read(dataBroadcasterProvider)
+                .retryPendingUnicast(room),
+          ),
+        );
+      }
+
+      return allReady;
+    },
+  );
 }
 
 class InMemorySecureStorageService implements SecureStorageService {
