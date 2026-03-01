@@ -23,6 +23,7 @@ typedef VectorClock = Map<String, String>;
 class CrdtService extends ChangeNotifier {
   final Map<String, SqlCrdt> _crdts = {};
   final Map<String, AppDatabase> _driftDbs = {};
+  final Map<SqlCrdt, Future<void>> _writeQueueByInstance = {};
   String? _dbKey; // Device-specific encryption key
 
   // Track initialization to prevent concurrent setup races
@@ -42,6 +43,27 @@ class CrdtService extends ChangeNotifier {
       () => StreamController<Uint8List>.broadcast(),
     );
     return _updateControllers[roomName]!.stream;
+  }
+
+  Future<void> _runSerializedWrite(
+    SqlCrdt crdt,
+    Future<void> Function() operation,
+  ) async {
+    final previous = _writeQueueByInstance[crdt] ?? Future<void>.value();
+    final current = previous
+        .catchError((_) {
+          // Keep queue progressing after a failed write.
+        })
+        .then((_) => operation());
+
+    _writeQueueByInstance[crdt] = current;
+    try {
+      await current;
+    } finally {
+      if (identical(_writeQueueByInstance[crdt], current)) {
+        _writeQueueByInstance.remove(crdt);
+      }
+    }
   }
 
   Future<void> initialize(
@@ -358,12 +380,15 @@ class CrdtService extends ChangeNotifier {
     final crdt = _crdts[roomName];
     if (crdt == null) return;
 
-    await crdt.execute(
-      '''
-      INSERT INTO $tableName (id, value) VALUES (?1, ?2) 
+    await _runSerializedWrite(
+      crdt,
+      () => crdt.execute(
+        '''
+      INSERT INTO $tableName (id, value) VALUES (?1, ?2)
       ON CONFLICT(id) DO UPDATE SET value = ?2
     ''',
-      [key, value],
+        [key, value],
+      ),
     );
   }
 
@@ -378,26 +403,28 @@ class CrdtService extends ChangeNotifier {
       return;
     }
 
-    try {
-      // 1. Scrub the data (Privacy/Storage)
-      // We update the value to empty string so the physical payload is removed
-      // even if the record stays as a tombstone.
-      // We do this outside a transaction to ensure each operation triggers a distinct
-      // dataset change event, improving sync reliability.
-      await crdt.execute('UPDATE $tableName SET value = ? WHERE id = ?', [
-        '',
-        key,
-      ]);
+    await _runSerializedWrite(crdt, () async {
+      try {
+        // 1. Scrub the data (Privacy/Storage)
+        // We update the value to empty string so the physical payload is removed
+        // even if the record stays as a tombstone.
+        // We do this outside a transaction to ensure each operation triggers a distinct
+        // dataset change event, improving sync reliability.
+        await crdt.execute('UPDATE $tableName SET value = ? WHERE id = ?', [
+          '',
+          key,
+        ]);
 
-      // 2. Perform the logical delete (CRDT Tombstone)
-      await crdt.execute('DELETE FROM $tableName WHERE id = ?', [key]);
+        // 2. Perform the logical delete (CRDT Tombstone)
+        await crdt.execute('DELETE FROM $tableName WHERE id = ?', [key]);
 
-      // 3. Broadcast handling
-      // We rely on onDatasetChangedCallback to broadcast the deletion
-      // which is more robust and avoids duplicate logic.
-    } catch (e) {
-      Log.e('CrdtService', 'Error during DELETE operations', e);
-    }
+        // 3. Broadcast handling
+        // We rely on onDatasetChangedCallback to broadcast the deletion
+        // which is more robust and avoids duplicate logic.
+      } catch (e) {
+        Log.e('CrdtService', 'Error during DELETE operations', e);
+      }
+    });
 
     // Notify Drift watchers that the table has changed
     final db = _driftDbs[roomName];
@@ -432,53 +459,56 @@ class CrdtService extends ChangeNotifier {
   Future<void> merge(String roomName, CrdtChangeset changeset) async {
     final crdt = _crdts[roomName];
     if (crdt == null) return;
-    await crdt.merge(changeset);
-    // --- DIAGNOSTIC: raw query after merge ---
-    for (final table in changeset.keys) {
-      if (table == 'cohrtz') continue; // skip internal CRDT table
-      try {
-        final allRows = await crdt.query(
-          'SELECT id, is_deleted, value, node_id, hlc FROM $table',
-        );
-        debugPrint('[CrdtService] DIAG $table: ${allRows.length} total rows');
-        for (final row in allRows) {
-          final val = row['value'] as String?;
-          final valPrint = val == null
-              ? 'null'
-              : (val.length > 20 ? '${val.substring(0, 20)}...' : val);
-          debugPrint(
-            '[CrdtService]   id=${row['id']}, '
-            'is_deleted=${row['is_deleted']}, '
-            'value=$valPrint, '
-            'node_id=${(row['node_id'] as String?)?.substring(0, 8) ?? 'null'}..., '
-            'hlc=${(row['hlc'] as String?)?.substring(0, 20) ?? 'null'}...',
+
+    await _runSerializedWrite(crdt, () async {
+      await crdt.merge(changeset);
+      // --- DIAGNOSTIC: raw query after merge ---
+      for (final table in changeset.keys) {
+        if (table == 'cohrtz') continue; // skip internal CRDT table
+        try {
+          final allRows = await crdt.query(
+            'SELECT id, is_deleted, value, node_id, hlc FROM $table',
           );
+          debugPrint('[CrdtService] DIAG $table: ${allRows.length} total rows');
+          for (final row in allRows) {
+            final val = row['value'] as String?;
+            final valPrint = val == null
+                ? 'null'
+                : (val.length > 20 ? '${val.substring(0, 20)}...' : val);
+            debugPrint(
+              '[CrdtService]   id=${row['id']}, '
+              'is_deleted=${row['is_deleted']}, '
+              'value=$valPrint, '
+              'node_id=${(row['node_id'] as String?)?.substring(0, 8) ?? 'null'}..., '
+              'hlc=${(row['hlc'] as String?)?.substring(0, 20) ?? 'null'}...',
+            );
+          }
+        } catch (e) {
+          debugPrint('[CrdtService] DIAG error querying $table: $e');
         }
-      } catch (e) {
-        debugPrint('[CrdtService] DIAG error querying $table: $e');
       }
-    }
-    // --- END DIAGNOSTIC ---
-    // Notify Drift watchers that tables have changed
-    final db = _driftDbs[roomName];
-    if (db != null) {
-      final changedTableNames = changeset.keys.toSet();
-      final changedTables = db.allTables.where(
-        (t) => changedTableNames.contains(t.actualTableName),
-      );
-      debugPrint(
-        '[CrdtService] merge: changeset tables=$changedTableNames, '
-        'matched drift tables=${changedTables.map((t) => t.actualTableName).toList()}, '
-        'db hashCode=${db.hashCode}',
-      );
-      if (changedTables.isNotEmpty) {
-        db.markTablesUpdated(changedTables);
-        debugPrint('[CrdtService] markTablesUpdated called');
+      // --- END DIAGNOSTIC ---
+      // Notify Drift watchers that tables have changed
+      final db = _driftDbs[roomName];
+      if (db != null) {
+        final changedTableNames = changeset.keys.toSet();
+        final changedTables = db.allTables.where(
+          (t) => changedTableNames.contains(t.actualTableName),
+        );
+        debugPrint(
+          '[CrdtService] merge: changeset tables=$changedTableNames, '
+          'matched drift tables=${changedTables.map((t) => t.actualTableName).toList()}, '
+          'db hashCode=${db.hashCode}',
+        );
+        if (changedTables.isNotEmpty) {
+          db.markTablesUpdated(changedTables);
+          debugPrint('[CrdtService] markTablesUpdated called');
+        }
+      } else {
+        debugPrint('[CrdtService] merge: NO drift db found for room=$roomName');
       }
-    } else {
-      debugPrint('[CrdtService] merge: NO drift db found for room=$roomName');
-    }
-    notifyListeners();
+      notifyListeners();
+    });
   }
 
   AppDatabase? getDatabase(String roomName) => _driftDbs[roomName];

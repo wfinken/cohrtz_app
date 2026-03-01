@@ -4,10 +4,46 @@ import 'package:flutter/foundation.dart';
 import 'package:sqlite3/sqlite3.dart';
 import 'package:sql_crdt/sql_crdt.dart';
 
+class _DbTransactionQueue {
+  Future<void> tail = Future<void>.value();
+}
+
 class Sqlite3ExecutorApi extends DatabaseApi {
+  static final Expando<_DbTransactionQueue> _transactionQueues =
+      Expando<_DbTransactionQueue>('sqlite3_transaction_queues');
   final Database _db;
 
   Sqlite3ExecutorApi(this._db);
+
+  _DbTransactionQueue get _transactionQueue =>
+      _transactionQueues[_db] ??= _DbTransactionQueue();
+
+  Future<T> _enqueueTransaction<T>(Future<T> Function() operation) {
+    final queue = _transactionQueue;
+    final previous = queue.tail;
+    final completer = Completer<T>();
+
+    late final Future<void> current;
+    current = previous
+        .catchError((_) {
+          // Keep queued operations flowing if a previous transaction failed.
+        })
+        .then((_) async {
+          try {
+            completer.complete(await operation());
+          } catch (e, st) {
+            completer.completeError(e, st);
+          }
+        });
+
+    queue.tail = current;
+    current.whenComplete(() {
+      if (identical(queue.tail, current)) {
+        queue.tail = Future<void>.value();
+      }
+    });
+    return completer.future;
+  }
 
   @override
   Future<void> execute(String sql, [List<Object?>? args]) async {
@@ -24,36 +60,34 @@ class Sqlite3ExecutorApi extends DatabaseApi {
   }
 
   @override
-  Future<void> transaction(
-    Future<void> Function(ReadWriteApi api) actions,
-  ) async {
-    _db.execute('BEGIN');
-    try {
-      final api = Sqlite3ExecutorApi(_db);
-      await actions(api);
-      _db.execute('COMMIT');
-    } catch (e) {
-      _db.execute('ROLLBACK');
-      rethrow;
-    }
-  }
+  Future<void> transaction(Future<void> Function(ReadWriteApi api) actions) =>
+      _enqueueTransaction(() async {
+        _db.execute('BEGIN');
+        try {
+          final api = Sqlite3ExecutorApi(_db);
+          await actions(api);
+          _db.execute('COMMIT');
+        } catch (e) {
+          _db.execute('ROLLBACK');
+          rethrow;
+        }
+      });
 
   Future<void> close() async => _db.dispose();
 
   @override
-  Future<void> executeBatch(
-    FutureOr<void> Function(WriteApi api) actions,
-  ) async {
-    _db.execute('BEGIN');
-    try {
-      final api = Sqlite3ExecutorApi(_db);
-      await actions(api);
-      _db.execute('COMMIT');
-    } catch (e) {
-      _db.execute('ROLLBACK');
-      rethrow;
-    }
-  }
+  Future<void> executeBatch(FutureOr<void> Function(WriteApi api) actions) =>
+      _enqueueTransaction(() async {
+        _db.execute('BEGIN');
+        try {
+          final api = Sqlite3ExecutorApi(_db);
+          await actions(api);
+          _db.execute('COMMIT');
+        } catch (e) {
+          _db.execute('ROLLBACK');
+          rethrow;
+        }
+      });
 }
 
 class EncryptedSqliteCrdt extends SqlCrdt {

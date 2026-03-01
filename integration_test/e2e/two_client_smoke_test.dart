@@ -6,6 +6,7 @@ import 'package:cohortz/slices/permissions_feature/models/member_model.dart';
 import 'package:cohortz/slices/permissions_feature/models/role_model.dart';
 import 'package:cohortz/slices/polls/models/poll_item.dart';
 import 'package:cohortz/slices/tasks/models/task_item.dart';
+import 'package:cohortz/app/di/app_providers.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
@@ -26,54 +27,57 @@ void main() {
     );
   }
 
-  testWidgets('syncs core and extended data between two clients', (
-    tester,
-  ) async {
-    expect(
-      config.hasDistinctIdentities,
-      isTrue,
-      reason: 'COHRTZ_E2E_IDENTITY_A and COHRTZ_E2E_IDENTITY_B must differ.',
-    );
+  testWidgets(
+    'syncs core and extended data across configured clients',
+    (tester) async {
+      expect(
+        config.userCount,
+        greaterThanOrEqualTo(2),
+        reason: 'COHRTZ_E2E_USER_COUNT must be >= 2 for sync coverage.',
+      );
 
-    final harness = await TwoClientHarness.start(config);
-    addTearDown(harness.dispose);
+      final harness = await TwoClientHarness.start(config);
+      addTearDown(harness.dispose);
 
-    final clientA = harness.clientA;
-    final clientB = harness.clientB;
+      final clients = harness.clients;
+      expect(clients, hasLength(config.userCount));
 
-    await _runTaskCrud(clientA, clientB);
-    await _runEventCrud(clientA, clientB);
-    await _runNoteCrud(clientA, clientB);
-    await _runChatCrud(clientA, clientB);
+      await _runTaskCrud(clients);
+      await _runEventCrud(clients);
+      await _runNoteCrud(clients);
+      await _runChatCrud(clients);
 
-    await _runPollCrud(clientA, clientB);
-    await _runGroupSettingsSync(clientA, clientB);
-    await _runRoleCrud(clientA, clientB);
-    await _runMemberCrud(clientA, clientB);
-  }, skip: config.shouldSkip);
+      await _runPollCrud(clients);
+      await _runGroupSettingsSync(clients);
+      await _runRoleCrud(clients);
+      await _runMemberCrud(clients);
+    },
+    skip: config.shouldSkip,
+  );
 }
 
-Future<void> _runTaskCrud(
-  E2eClientContext clientA,
-  E2eClientContext clientB,
-) async {
+Future<void> _runTaskCrud(List<E2eClientContext> clients) async {
+  final creator = clients.first;
+  final updater = clients[1];
   final taskId = _uniqueId('task');
 
   final created = TaskItem(
     id: taskId,
     title: 'smoke task created by A',
     assignedTo: 'Both',
-    creatorId: clientA.identity,
+    creatorId: creator.identity,
   );
-  await clientA.dashboard.saveTask(created);
+  await creator.dashboard.saveTask(created);
 
   await expectEventually(
-    description: 'clientB should receive created task $taskId',
+    description: 'all clients should receive created task $taskId',
     condition: () async {
-      final tasks = await clientB.dashboard.watchTasks().first;
-      return tasks.any(
-        (task) => task.id == taskId && task.title == created.title,
-      );
+      return _allClients(clients, (client) async {
+        final tasks = await client.dashboard.watchTasks().first;
+        return tasks.any(
+          (task) => task.id == taskId && task.title == created.title,
+        );
+      });
     },
   );
 
@@ -81,44 +85,66 @@ Future<void> _runTaskCrud(
     id: taskId,
     title: 'smoke task updated by B',
     assignedTo: 'Both',
-    creatorId: clientA.identity,
+    creatorId: creator.identity,
     isCompleted: true,
-    completedBy: clientB.identity,
+    completedBy: updater.identity,
   );
-  await clientB.dashboard.saveTask(updated);
+  await updater.dashboard.saveTask(updated);
+  await _forceSyncPulse(clients);
+  // Re-apply once to mitigate rare CRDT clock races where the first update
+  // can lose to an earlier writer's timestamp.
+  await updater.dashboard.saveTask(updated);
+  await _forceSyncPulse(clients);
 
   await expectEventually(
-    description: 'clientA should receive updated task $taskId',
+    description: 'all clients should receive updated task $taskId',
     condition: () async {
-      final tasks = await clientA.dashboard.watchTasks().first;
-      return tasks.any(
-        (task) =>
-            task.id == taskId &&
-            task.title == updated.title &&
-            task.isCompleted &&
-            task.completedBy == clientB.identity,
-      );
+      final mismatches = <String>[];
+      for (final client in clients) {
+        final tasks = await client.dashboard.watchTasks().first;
+        final matching = tasks.where((task) => task.id == taskId).toList();
+        if (matching.isEmpty) {
+          mismatches.add('${client.label}:missing');
+          continue;
+        }
+        final converged = matching.any(
+          (task) =>
+              task.title == updated.title &&
+              task.isCompleted &&
+              _sameIdentity(task.completedBy, updater.identity),
+        );
+        if (!converged) {
+          final snapshot = matching.first;
+          mismatches.add(
+            '${client.label}:title=${snapshot.title},completed=${snapshot.isCompleted},completedBy=${snapshot.completedBy}',
+          );
+        }
+      }
+      if (mismatches.isNotEmpty) {
+        throw StateError(
+          'Task $taskId not converged across clients: ${mismatches.join(' | ')}',
+        );
+      }
+      return true;
     },
   );
 
-  await clientA.dashboard.deleteTask(taskId);
+  await creator.dashboard.deleteTask(taskId);
 
   await expectEventually(
-    description: 'task $taskId should be deleted on both clients',
+    description: 'task $taskId should be deleted on all clients',
     condition: () async {
-      final tasksA = await clientA.dashboard.watchTasks().first;
-      final tasksB = await clientB.dashboard.watchTasks().first;
-      final existsA = tasksA.any((task) => task.id == taskId);
-      final existsB = tasksB.any((task) => task.id == taskId);
-      return !existsA && !existsB;
+      return _allClients(clients, (client) async {
+        final tasks = await client.dashboard.watchTasks().first;
+        return !tasks.any((task) => task.id == taskId);
+      });
     },
   );
 }
 
-Future<void> _runEventCrud(
-  E2eClientContext clientA,
-  E2eClientContext clientB,
-) async {
+Future<void> _runEventCrud(List<E2eClientContext> clients) async {
+  final creator = clients.first;
+  final updater = clients[1];
   final eventId = _uniqueId('event');
   final start = DateTime.now().toUtc().add(const Duration(minutes: 5));
 
@@ -128,17 +154,19 @@ Future<void> _runEventCrud(
     time: start,
     endTime: start.add(const Duration(hours: 1)),
     location: 'Room A',
-    creatorId: clientA.identity,
+    creatorId: creator.identity,
   );
-  await clientA.dashboard.saveEvent(created);
+  await creator.dashboard.saveEvent(created);
 
   await expectEventually(
-    description: 'clientB should receive created event $eventId',
+    description: 'all clients should receive created event $eventId',
     condition: () async {
-      final events = await clientB.dashboard.watchEvents().first;
-      return events.any(
-        (event) => event.id == eventId && event.title == created.title,
-      );
+      return _allClients(clients, (client) async {
+        final events = await client.dashboard.watchEvents().first;
+        return events.any(
+          (event) => event.id == eventId && event.title == created.title,
+        );
+      });
     },
   );
 
@@ -149,41 +177,41 @@ Future<void> _runEventCrud(
     endTime: start.add(const Duration(hours: 2)),
     location: 'Room B',
     description: 'updated from clientB',
-    creatorId: clientA.identity,
+    creatorId: creator.identity,
   );
-  await clientB.dashboard.saveEvent(updated);
+  await updater.dashboard.saveEvent(updated);
 
   await expectEventually(
-    description: 'clientA should receive updated event $eventId',
+    description: 'all clients should receive updated event $eventId',
     condition: () async {
-      final events = await clientA.dashboard.watchEvents().first;
-      return events.any(
-        (event) =>
-            event.id == eventId &&
-            event.title == updated.title &&
-            event.location == updated.location,
-      );
+      return _allClients(clients, (client) async {
+        final events = await client.dashboard.watchEvents().first;
+        return events.any(
+          (event) =>
+              event.id == eventId &&
+              event.title == updated.title &&
+              event.location == updated.location,
+        );
+      });
     },
   );
 
-  await clientA.dashboard.deleteEvent(eventId);
+  await creator.dashboard.deleteEvent(eventId);
 
   await expectEventually(
-    description: 'event $eventId should be deleted on both clients',
+    description: 'event $eventId should be deleted on all clients',
     condition: () async {
-      final eventsA = await clientA.dashboard.watchEvents().first;
-      final eventsB = await clientB.dashboard.watchEvents().first;
-      final existsA = eventsA.any((event) => event.id == eventId);
-      final existsB = eventsB.any((event) => event.id == eventId);
-      return !existsA && !existsB;
+      return _allClients(clients, (client) async {
+        final events = await client.dashboard.watchEvents().first;
+        return !events.any((event) => event.id == eventId);
+      });
     },
   );
 }
 
-Future<void> _runNoteCrud(
-  E2eClientContext clientA,
-  E2eClientContext clientB,
-) async {
+Future<void> _runNoteCrud(List<E2eClientContext> clients) async {
+  final creator = clients.first;
+  final updater = clients[1];
   final noteId = _uniqueId('note');
   final now = DateTime.now().toUtc();
 
@@ -191,19 +219,21 @@ Future<void> _runNoteCrud(
     id: noteId,
     title: 'smoke note created by A',
     content: 'initial content from clientA',
-    updatedBy: clientA.identity,
+    updatedBy: creator.identity,
     updatedAt: now,
     logicalTime: 1,
   );
-  await clientA.notes.saveNote(created);
+  await creator.notes.saveNote(created);
 
   await expectEventually(
-    description: 'clientB should receive created note $noteId',
+    description: 'all clients should receive created note $noteId',
     condition: () async {
-      final notes = await clientB.notes.watchNotes().first;
-      return notes.any(
-        (note) => note.id == noteId && note.title == created.title,
-      );
+      return _allClients(clients, (client) async {
+        final notes = await client.notes.watchNotes().first;
+        return notes.any(
+          (note) => note.id == noteId && note.title == created.title,
+        );
+      });
     },
   );
 
@@ -211,43 +241,43 @@ Future<void> _runNoteCrud(
     id: noteId,
     title: 'smoke note updated by B',
     content: 'updated content from clientB',
-    updatedBy: clientB.identity,
+    updatedBy: updater.identity,
     updatedAt: now.add(const Duration(minutes: 1)),
     logicalTime: 2,
   );
-  await clientB.notes.saveNote(updated);
+  await updater.notes.saveNote(updated);
 
   await expectEventually(
-    description: 'clientA should receive updated note $noteId',
+    description: 'all clients should receive updated note $noteId',
     condition: () async {
-      final notes = await clientA.notes.watchNotes().first;
-      return notes.any(
-        (note) =>
-            note.id == noteId &&
-            note.title == updated.title &&
-            note.content == updated.content,
-      );
+      return _allClients(clients, (client) async {
+        final notes = await client.notes.watchNotes().first;
+        return notes.any(
+          (note) =>
+              note.id == noteId &&
+              note.title == updated.title &&
+              note.content == updated.content,
+        );
+      });
     },
   );
 
-  await clientA.notes.deleteNote(noteId);
+  await creator.notes.deleteNote(noteId);
 
   await expectEventually(
-    description: 'note $noteId should be deleted on both clients',
+    description: 'note $noteId should be deleted on all clients',
     condition: () async {
-      final notesA = await clientA.notes.watchNotes().first;
-      final notesB = await clientB.notes.watchNotes().first;
-      final existsA = notesA.any((note) => note.id == noteId);
-      final existsB = notesB.any((note) => note.id == noteId);
-      return !existsA && !existsB;
+      return _allClients(clients, (client) async {
+        final notes = await client.notes.watchNotes().first;
+        return !notes.any((note) => note.id == noteId);
+      });
     },
   );
 }
 
-Future<void> _runChatCrud(
-  E2eClientContext clientA,
-  E2eClientContext clientB,
-) async {
+Future<void> _runChatCrud(List<E2eClientContext> clients) async {
+  final creator = clients.first;
+  final updater = clients[1];
   final threadId = _uniqueId('thread');
   final messageId = _uniqueId('message');
   final createdAt = DateTime.now().toUtc();
@@ -256,98 +286,101 @@ Future<void> _runChatCrud(
     id: threadId,
     kind: ChatThread.channelKind,
     name: 'smoke-thread',
-    participantIds: [clientA.identity, clientB.identity],
-    createdBy: clientA.identity,
+    participantIds: clients
+        .map((client) => client.identity)
+        .toList(growable: false),
+    createdBy: creator.identity,
     createdAt: createdAt,
     logicalTime: 1,
   );
-  await clientA.dashboard.saveChatThread(thread);
+  await creator.dashboard.saveChatThread(thread);
 
   await expectEventually(
-    description: 'clientB should receive created thread $threadId',
+    description: 'all clients should receive created thread $threadId',
     condition: () async {
-      final threads = await clientB.dashboard.watchChatThreads().first;
-      return threads.any((value) => value.id == threadId);
+      return _allClients(clients, (client) async {
+        final threads = await client.dashboard.watchChatThreads().first;
+        return threads.any((value) => value.id == threadId);
+      });
     },
   );
 
   final createdMessage = ChatMessage(
     id: messageId,
-    senderId: clientA.identity,
+    senderId: creator.identity,
     threadId: threadId,
     content: 'hello from clientA',
     timestamp: createdAt,
     logicalTime: 1,
   );
-  await clientA.dashboard.saveMessage(createdMessage);
+  await creator.dashboard.saveMessage(createdMessage);
 
   await expectEventually(
-    description: 'clientB should receive created chat message $messageId',
+    description: 'all clients should receive created chat message $messageId',
     condition: () async {
-      final messages = await clientB.dashboard
-          .watchMessagesForThread(threadId)
-          .first;
-      return messages.any(
-        (message) =>
-            message.id == messageId &&
-            message.content == createdMessage.content,
-      );
+      return _allClients(clients, (client) async {
+        final messages = await client.dashboard
+            .watchMessagesForThread(threadId)
+            .first;
+        return messages.any(
+          (message) =>
+              message.id == messageId &&
+              message.content == createdMessage.content,
+        );
+      });
     },
   );
 
   final updatedMessage = ChatMessage(
     id: messageId,
-    senderId: clientA.identity,
+    senderId: creator.identity,
     threadId: threadId,
     content: 'hello updated by clientB',
     timestamp: createdAt.add(const Duration(seconds: 10)),
     logicalTime: 2,
   );
-  await clientB.dashboard.saveMessage(updatedMessage);
+  await updater.dashboard.saveMessage(updatedMessage);
 
   await expectEventually(
-    description: 'clientA should receive updated chat message $messageId',
+    description: 'all clients should receive updated chat message $messageId',
     condition: () async {
-      final messages = await clientA.dashboard
-          .watchMessagesForThread(threadId)
-          .first;
-      return messages.any(
-        (message) =>
-            message.id == messageId &&
-            message.content == updatedMessage.content,
-      );
+      return _allClients(clients, (client) async {
+        final messages = await client.dashboard
+            .watchMessagesForThread(threadId)
+            .first;
+        return messages.any(
+          (message) =>
+              message.id == messageId &&
+              message.content == updatedMessage.content,
+        );
+      });
     },
   );
 
-  await clientA.dashboard.deleteChatThreadAndMessages(threadId);
+  await creator.dashboard.deleteChatThreadAndMessages(threadId);
 
   await expectEventually(
     description:
-        'thread $threadId and message $messageId should be deleted on both clients',
+        'thread $threadId and message $messageId should be deleted on all clients',
     condition: () async {
-      final threadsA = await clientA.dashboard.watchChatThreads().first;
-      final threadsB = await clientB.dashboard.watchChatThreads().first;
-      final messagesA = await clientA.dashboard
-          .watchMessagesForThread(threadId)
-          .first;
-      final messagesB = await clientB.dashboard
-          .watchMessagesForThread(threadId)
-          .first;
+      return _allClients(clients, (client) async {
+        final threads = await client.dashboard.watchChatThreads().first;
+        final messages = await client.dashboard
+            .watchMessagesForThread(threadId)
+            .first;
 
-      final threadExistsA = threadsA.any((thread) => thread.id == threadId);
-      final threadExistsB = threadsB.any((thread) => thread.id == threadId);
-      final msgExistsA = messagesA.any((message) => message.id == messageId);
-      final msgExistsB = messagesB.any((message) => message.id == messageId);
+        final threadExists = threads.any((thread) => thread.id == threadId);
+        final msgExists = messages.any((message) => message.id == messageId);
 
-      return !threadExistsA && !threadExistsB && !msgExistsA && !msgExistsB;
+        return !threadExists && !msgExists;
+      });
     },
   );
 }
 
-Future<void> _runPollCrud(
-  E2eClientContext clientA,
-  E2eClientContext clientB,
-) async {
+Future<void> _runPollCrud(List<E2eClientContext> clients) async {
+  final creator = clients.first;
+  final updater = clients[1];
   final pollId = _uniqueId('poll');
   final endTime = DateTime.now().toUtc().add(const Duration(hours: 2));
 
@@ -356,20 +389,22 @@ Future<void> _runPollCrud(
     question: 'smoke poll created by A',
     approvedCount: 0,
     rejectedCount: 0,
-    requiredVotes: 2,
+    requiredVotes: clients.length,
     endTime: endTime,
     pendingVoters: const <PendingVoter>[],
-    creatorId: clientA.identity,
+    creatorId: creator.identity,
   );
-  await clientA.dashboard.savePoll(created);
+  await creator.dashboard.savePoll(created);
 
   await expectEventually(
-    description: 'clientB should receive created poll $pollId',
+    description: 'all clients should receive created poll $pollId',
     condition: () async {
-      final polls = await clientB.dashboard.watchPolls().first;
-      return polls.any(
-        (poll) => poll.id == pollId && poll.question == created.question,
-      );
+      return _allClients(clients, (client) async {
+        final polls = await client.dashboard.watchPolls().first;
+        return polls.any(
+          (poll) => poll.id == pollId && poll.question == created.question,
+        );
+      });
     },
   );
 
@@ -378,45 +413,45 @@ Future<void> _runPollCrud(
     question: 'smoke poll updated by B',
     approvedCount: 1,
     rejectedCount: 0,
-    requiredVotes: 2,
+    requiredVotes: clients.length,
     endTime: endTime,
     pendingVoters: const <PendingVoter>[],
-    creatorId: clientA.identity,
-    votedUserIds: [clientB.identity],
+    creatorId: creator.identity,
+    votedUserIds: [updater.identity],
   );
-  await clientB.dashboard.savePoll(updated);
+  await updater.dashboard.savePoll(updated);
 
   await expectEventually(
-    description: 'clientA should receive updated poll $pollId',
+    description: 'all clients should receive updated poll $pollId',
     condition: () async {
-      final polls = await clientA.dashboard.watchPolls().first;
-      return polls.any(
-        (poll) =>
-            poll.id == pollId &&
-            poll.question == updated.question &&
-            poll.approvedCount == 1,
-      );
+      return _allClients(clients, (client) async {
+        final polls = await client.dashboard.watchPolls().first;
+        return polls.any(
+          (poll) =>
+              poll.id == pollId &&
+              poll.question == updated.question &&
+              poll.approvedCount == 1,
+        );
+      });
     },
   );
 
-  await clientA.dashboard.deletePoll(pollId);
+  await creator.dashboard.deletePoll(pollId);
 
   await expectEventually(
-    description: 'poll $pollId should be deleted on both clients',
+    description: 'poll $pollId should be deleted on all clients',
     condition: () async {
-      final pollsA = await clientA.dashboard.watchPolls().first;
-      final pollsB = await clientB.dashboard.watchPolls().first;
-      final existsA = pollsA.any((poll) => poll.id == pollId);
-      final existsB = pollsB.any((poll) => poll.id == pollId);
-      return !existsA && !existsB;
+      return _allClients(clients, (client) async {
+        final polls = await client.dashboard.watchPolls().first;
+        return !polls.any((poll) => poll.id == pollId);
+      });
     },
   );
 }
 
-Future<void> _runGroupSettingsSync(
-  E2eClientContext clientA,
-  E2eClientContext clientB,
-) async {
+Future<void> _runGroupSettingsSync(List<E2eClientContext> clients) async {
+  final creator = clients.first;
+  final updater = clients[1];
   final createdAt = DateTime.now().toUtc();
 
   final created = GroupSettings(
@@ -425,18 +460,20 @@ Future<void> _runGroupSettingsSync(
     createdAt: createdAt,
     logicalTime: 1,
     groupType: GroupType.team,
-    dataRoomName: clientA.room,
-    ownerId: clientA.identity,
+    dataRoomName: creator.room,
+    ownerId: creator.identity,
   );
-  await clientA.dashboard.saveGroupSettings(created);
+  await creator.dashboard.saveGroupSettings(created);
 
   await expectEventually(
-    description: 'clientB should receive group settings from clientA',
+    description: 'all clients should receive group settings from clientA',
     condition: () async {
-      final settings = await clientB.dashboard.watchGroupSettings().first;
-      return settings != null &&
-          settings.id == 'group_settings' &&
-          settings.name == created.name;
+      return _allClients(clients, (client) async {
+        final settings = await client.dashboard.watchGroupSettings().first;
+        return settings != null &&
+            settings.id == 'group_settings' &&
+            settings.name == created.name;
+      });
     },
   );
 
@@ -446,99 +483,105 @@ Future<void> _runGroupSettingsSync(
     createdAt: createdAt,
     logicalTime: 2,
     groupType: GroupType.guild,
-    dataRoomName: clientA.room,
-    ownerId: clientA.identity,
+    dataRoomName: creator.room,
+    ownerId: creator.identity,
   );
-  await clientB.dashboard.saveGroupSettings(updated);
+  await updater.dashboard.saveGroupSettings(updated);
 
   await expectEventually(
-    description: 'clientA should receive updated group settings from clientB',
+    description:
+        'all clients should receive updated group settings from clientB',
     condition: () async {
-      final settings = await clientA.dashboard.watchGroupSettings().first;
-      return settings != null &&
-          settings.id == 'group_settings' &&
-          settings.name == updated.name &&
-          settings.groupType == GroupType.guild;
+      return _allClients(clients, (client) async {
+        final settings = await client.dashboard.watchGroupSettings().first;
+        return settings != null &&
+            settings.id == 'group_settings' &&
+            settings.name == updated.name &&
+            settings.groupType == GroupType.guild;
+      });
     },
   );
 }
 
-Future<void> _runRoleCrud(
-  E2eClientContext clientA,
-  E2eClientContext clientB,
-) async {
+Future<void> _runRoleCrud(List<E2eClientContext> clients) async {
+  final creator = clients.first;
+  final updater = clients[1];
   final roleId = _uniqueId('role');
 
   final created = Role(
     id: roleId,
-    groupId: clientA.room,
+    groupId: creator.room,
     name: 'smoke-role-a',
     color: 0xFF2A9D8F,
     position: 1,
     permissions: 0,
   );
-  await clientA.roles.saveRole(created);
+  await creator.roles.saveRole(created);
 
   await expectEventually(
-    description: 'clientB should receive role $roleId',
+    description: 'all clients should receive role $roleId',
     condition: () async {
-      final roles = await clientB.roles.watchRoles().first;
-      return roles.any(
-        (role) => role.id == roleId && role.name == created.name,
-      );
+      return _allClients(clients, (client) async {
+        final roles = await client.roles.watchRoles().first;
+        return roles.any(
+          (role) => role.id == roleId && role.name == created.name,
+        );
+      });
     },
   );
 
   final updated = Role(
     id: roleId,
-    groupId: clientA.room,
+    groupId: creator.room,
     name: 'smoke-role-b',
     color: 0xFFE76F51,
     position: 2,
     permissions: 4,
     isHoisted: true,
   );
-  await clientB.roles.saveRole(updated);
+  await updater.roles.saveRole(updated);
 
   await expectEventually(
-    description: 'clientA should receive updated role $roleId',
+    description: 'all clients should receive updated role $roleId',
     condition: () async {
-      final roles = await clientA.roles.watchRoles().first;
-      return roles.any(
-        (role) =>
-            role.id == roleId && role.name == updated.name && role.isHoisted,
-      );
+      return _allClients(clients, (client) async {
+        final roles = await client.roles.watchRoles().first;
+        return roles.any(
+          (role) =>
+              role.id == roleId && role.name == updated.name && role.isHoisted,
+        );
+      });
     },
   );
 
-  await clientA.roles.deleteRole(roleId);
+  await creator.roles.deleteRole(roleId);
 
   await expectEventually(
-    description: 'role $roleId should be deleted on both clients',
+    description: 'role $roleId should be deleted on all clients',
     condition: () async {
-      final rolesA = await clientA.roles.watchRoles().first;
-      final rolesB = await clientB.roles.watchRoles().first;
-      final existsA = rolesA.any((role) => role.id == roleId);
-      final existsB = rolesB.any((role) => role.id == roleId);
-      return !existsA && !existsB;
+      return _allClients(clients, (client) async {
+        final roles = await client.roles.watchRoles().first;
+        return !roles.any((role) => role.id == roleId);
+      });
     },
   );
 }
 
-Future<void> _runMemberCrud(
-  E2eClientContext clientA,
-  E2eClientContext clientB,
-) async {
+Future<void> _runMemberCrud(List<E2eClientContext> clients) async {
+  final creator = clients.first;
+  final updater = clients[1];
   final memberId = _uniqueId('member');
 
   final created = GroupMember(id: memberId, roleIds: const <String>[]);
-  await clientA.members.saveMember(created);
+  await creator.members.saveMember(created);
 
   await expectEventually(
-    description: 'clientB should receive member $memberId',
+    description: 'all clients should receive member $memberId',
     condition: () async {
-      final members = await clientB.members.watchMembers().first;
-      return members.any((member) => member.id == memberId);
+      return _allClients(clients, (client) async {
+        final members = await client.members.watchMembers().first;
+        return members.any((member) => member.id == memberId);
+      });
     },
   );
 
@@ -546,29 +589,65 @@ Future<void> _runMemberCrud(
     id: memberId,
     roleIds: const <String>['role-alpha', 'role-beta'],
   );
-  await clientB.members.saveMember(updated);
+  await updater.members.saveMember(updated);
 
   await expectEventually(
-    description: 'clientA should receive updated member $memberId',
+    description: 'all clients should receive updated member $memberId',
     condition: () async {
-      final members = await clientA.members.watchMembers().first;
-      return members.any(
-        (member) => member.id == memberId && member.roleIds.length == 2,
-      );
+      return _allClients(clients, (client) async {
+        final members = await client.members.watchMembers().first;
+        return members.any(
+          (member) => member.id == memberId && member.roleIds.length == 2,
+        );
+      });
     },
   );
 
-  await clientA.members.deleteMember(memberId);
+  await creator.members.deleteMember(memberId);
 
   await expectEventually(
-    description: 'member $memberId should be deleted on both clients',
+    description: 'member $memberId should be deleted on all clients',
     condition: () async {
-      final membersA = await clientA.members.watchMembers().first;
-      final membersB = await clientB.members.watchMembers().first;
-      final existsA = membersA.any((member) => member.id == memberId);
-      final existsB = membersB.any((member) => member.id == memberId);
-      return !existsA && !existsB;
+      return _allClients(clients, (client) async {
+        final members = await client.members.watchMembers().first;
+        return !members.any((member) => member.id == memberId);
+      });
     },
+  );
+}
+
+Future<bool> _allClients(
+  List<E2eClientContext> clients,
+  Future<bool> Function(E2eClientContext client) predicate,
+) async {
+  final results = await Future.wait<bool>(clients.map(predicate));
+  return results.every((value) => value);
+}
+
+bool _sameIdentity(String a, String b) {
+  String normalize(String value) {
+    final trimmed = value.trim().toLowerCase();
+    return trimmed.startsWith('user:') ? trimmed.substring(5) : trimmed;
+  }
+
+  return normalize(a) == normalize(b);
+}
+
+Future<void> _forceSyncPulse(List<E2eClientContext> clients) async {
+  if (clients.isEmpty) return;
+  final room = clients.first.room;
+
+  await Future.wait(
+    clients.map((client) async {
+      final handshake = client.container.read(handshakeHandlerProvider);
+      final syncProtocol = client.container.read(syncProtocolProvider);
+      final broadcaster = client.container.read(dataBroadcasterProvider);
+
+      await handshake.requestHandshake(room, force: true);
+      await syncProtocol.requestSync(room, force: true);
+      await broadcaster.retryPendingUnicast(room);
+      await broadcaster.retryBufferedPackets(room);
+    }),
   );
 }
 

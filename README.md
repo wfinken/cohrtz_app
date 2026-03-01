@@ -122,26 +122,27 @@ Here is exactly how we implement the security stack:
   - `flutter test`
 - Two-client backend E2E smoke prerequisites:
   - Requires a reachable token endpoint (`/token`) and LiveKit backend.
-  - Both clients connect to the same room with different identities.
-  - Required defines: `COHRTZ_E2E_ENABLED`, `COHRTZ_E2E_ROOM`, `COHRTZ_E2E_IDENTITY_A`, `COHRTZ_E2E_IDENTITY_B`.
+  - The test dynamically creates the configured number of clients and identities in one generated room.
+  - Required defines: `COHRTZ_E2E_ENABLED`, `COHRTZ_E2E_USER_COUNT` (must be `>= 2`).
+  - Optional define: `COHRTZ_E2E_ROOM_PREFIX` (default: `cohrtz-e2e`).
 - Run two-client backend E2E smoke suite:
-  - `flutter test integration_test/e2e/two_client_smoke_test.dart --dart-define=COHRTZ_E2E_ENABLED=true --dart-define=COHRTZ_E2E_ROOM=<room> --dart-define=COHRTZ_E2E_IDENTITY_A=<identity-a> --dart-define=COHRTZ_E2E_IDENTITY_B=<identity-b>`
+  - `flutter test integration_test/e2e/two_client_smoke_test.dart --dart-define=COHRTZ_E2E_ENABLED=true --dart-define=COHRTZ_E2E_USER_COUNT=<count> [--dart-define=COHRTZ_E2E_ROOM_PREFIX=<prefix>]`
   - What it validates:
-    - Both clients connect and discover each other in the same room.
-    - `tasks`: create/update/delete across clients with assertions on both sides.
-    - `calendar_events`: create/update/delete across clients with assertions on both sides.
-    - `notes`: create/update/delete across clients with assertions on both sides.
-    - `chat`: create thread + message, update message, delete thread/messages, with assertions on both sides.
-    - `polls`: create/update/delete and cross-client convergence.
-    - `group_settings`: save from one client, update from the other, and verify final values on both.
-    - `roles`: create/update/delete with cross-client assertions.
-    - `members`: create/update/delete with cross-client assertions.
+    - All configured clients connect and discover each other in the generated room.
+    - `tasks`: create/update/delete across clients with assertions on all clients.
+    - `calendar_events`: create/update/delete across clients with assertions on all clients.
+    - `notes`: create/update/delete across clients with assertions on all clients.
+    - `chat`: create thread + message, update message, delete thread/messages, with assertions on all clients.
+    - `polls`: create/update/delete and convergence across all clients.
+    - `group_settings`: save from one client, update from another, and verify final values on all clients.
+    - `roles`: create/update/delete with cross-client assertions on all clients.
+    - `members`: create/update/delete with cross-client assertions on all clients.
 - Pass criteria for both suites:
-  - Each mutation is asserted with eventual-consistency checks on both clients.
+  - Each mutation is asserted with eventual-consistency checks on all configured clients.
   - The test fails if propagation does not converge within the configured timeout.
 - Troubleshooting:
   - If you see `All tests skipped`, one or more required `--dart-define` values were not provided.
-  - `COHRTZ_E2E_IDENTITY_A` and `COHRTZ_E2E_IDENTITY_B` must be different values.
+  - Ensure `COHRTZ_E2E_USER_COUNT` is set to `2` or greater.
 
 ## 📄 License
 AGPL-3.0
