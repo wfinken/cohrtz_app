@@ -674,6 +674,10 @@ void _bootstrapActivityNotifications(Ref ref) {
           );
           continue;
         }
+        final isMention =
+            message.mentionsEveryone ||
+            (localUserId.isNotEmpty &&
+                message.mentionUserIds.contains(localUserId));
         final senderName = knownUserDisplayNames[message.senderId];
         unawaited(
           notificationService.showNewChatMessage(
@@ -682,7 +686,9 @@ void _bootstrapActivityNotifications(Ref ref) {
             senderName: senderName == null || senderName.isEmpty
                 ? 'Member'
                 : senderName.trim(),
-            messagePreview: previewMessage(message.content),
+            messagePreview: isMention
+                ? '[mention] ${previewMessage(message.content)}'
+                : previewMessage(message.content),
           ),
         );
       }

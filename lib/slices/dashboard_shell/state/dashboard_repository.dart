@@ -111,6 +111,50 @@ class _DashboardChatRepositoryAdapter implements IChatRepository {
       _repository.saveMessage(message);
 
   @override
+  Future<ChatMessage?> getMessageById(String messageId) =>
+      _repository.getMessageById(messageId);
+
+  @override
+  Future<void> editMessage({
+    required String messageId,
+    required String editorId,
+    required String content,
+  }) => _repository.editMessage(
+    messageId: messageId,
+    editorId: editorId,
+    content: content,
+  );
+
+  @override
+  Future<void> softDeleteMessage({
+    required String messageId,
+    required String deletedBy,
+  }) =>
+      _repository.softDeleteMessage(messageId: messageId, deletedBy: deletedBy);
+
+  @override
+  Future<void> toggleReaction({
+    required String messageId,
+    required String emoji,
+    required String userId,
+  }) => _repository.toggleReaction(
+    messageId: messageId,
+    emoji: emoji,
+    userId: userId,
+  );
+
+  @override
+  Future<void> togglePin({
+    required String messageId,
+    required bool pinned,
+    required String actorId,
+  }) => _repository.togglePin(
+    messageId: messageId,
+    pinned: pinned,
+    actorId: actorId,
+  );
+
+  @override
   Stream<List<ChatThread>> watchChatThreads() => _repository.watchChatThreads();
 
   @override
@@ -120,6 +164,17 @@ class _DashboardChatRepositoryAdapter implements IChatRepository {
   @override
   Future<void> deleteChatThread(String threadId) =>
       _repository.deleteChatThread(threadId);
+
+  @override
+  Future<ChatThread> createSubthreadFromMessage({
+    required String parentMessageId,
+    required String creatorId,
+    required String name,
+  }) => _repository.createSubthreadFromMessage(
+    parentMessageId: parentMessageId,
+    creatorId: creatorId,
+    name: name,
+  );
 
   @override
   Future<void> leaveDirectMessageThread({
@@ -135,6 +190,52 @@ class _DashboardChatRepositoryAdapter implements IChatRepository {
   @override
   Future<void> clearChatMessages(String threadId) =>
       _repository.clearChatMessages(threadId);
+
+  @override
+  Stream<List<ChatTypingState>> watchTypingStates(
+    String threadId, {
+    Duration activeThreshold = const Duration(seconds: 7),
+  }) =>
+      _repository.watchTypingStates(threadId, activeThreshold: activeThreshold);
+
+  @override
+  Future<void> touchTyping({
+    required String threadId,
+    required String userId,
+    required bool isTyping,
+  }) => _repository.touchTyping(
+    threadId: threadId,
+    userId: userId,
+    isTyping: isTyping,
+  );
+
+  @override
+  Stream<List<ChatUserPresence>> watchPresence({
+    Duration activeThreshold = const Duration(minutes: 2),
+  }) => _repository.watchPresence(activeThreshold: activeThreshold);
+
+  @override
+  Future<void> touchPresence({required String userId, required String state}) =>
+      _repository.touchPresence(userId: userId, state: state);
+
+  @override
+  Stream<List<ChatModerationEvent>> watchModerationEvents({
+    String? threadId,
+    String? targetUserId,
+  }) => _repository.watchModerationEvents(
+    threadId: threadId,
+    targetUserId: targetUserId,
+  );
+
+  @override
+  Future<void> saveModerationEvent(ChatModerationEvent event) =>
+      _repository.saveModerationEvent(event);
+
+  @override
+  Future<List<ChatSearchResult>> searchMessages(
+    ChatSearchQuery query, {
+    int limit = 100,
+  }) => _repository.searchMessages(query, limit: limit);
 
   @override
   Future<ChatThread> ensureDirectMessageThread({
@@ -204,12 +305,57 @@ class DashboardRepository {
       _chatRepository.watchMessagesForThread(threadId);
   Future<void> saveMessage(ChatMessage message) =>
       _chatRepository.saveMessage(message);
+  Future<ChatMessage?> getMessageById(String messageId) =>
+      _chatRepository.getMessageById(messageId);
+  Future<void> editMessage({
+    required String messageId,
+    required String editorId,
+    required String content,
+  }) => _chatRepository.editMessage(
+    messageId: messageId,
+    editorId: editorId,
+    content: content,
+  );
+  Future<void> softDeleteMessage({
+    required String messageId,
+    required String deletedBy,
+  }) => _chatRepository.softDeleteMessage(
+    messageId: messageId,
+    deletedBy: deletedBy,
+  );
+  Future<void> toggleReaction({
+    required String messageId,
+    required String emoji,
+    required String userId,
+  }) => _chatRepository.toggleReaction(
+    messageId: messageId,
+    emoji: emoji,
+    userId: userId,
+  );
+  Future<void> togglePin({
+    required String messageId,
+    required bool pinned,
+    required String actorId,
+  }) => _chatRepository.togglePin(
+    messageId: messageId,
+    pinned: pinned,
+    actorId: actorId,
+  );
   Stream<List<ChatThread>> watchChatThreads() =>
       _chatRepository.watchChatThreads();
   Future<void> saveChatThread(ChatThread thread) =>
       _chatRepository.saveChatThread(thread);
   Future<void> deleteChatThread(String threadId) =>
       _chatRepository.deleteChatThread(threadId);
+  Future<ChatThread> createSubthreadFromMessage({
+    required String parentMessageId,
+    required String creatorId,
+    required String name,
+  }) => _chatRepository.createSubthreadFromMessage(
+    parentMessageId: parentMessageId,
+    creatorId: creatorId,
+    name: name,
+  );
   Future<void> leaveDirectMessageThread({
     required String threadId,
     required String userId,
@@ -221,6 +367,40 @@ class DashboardRepository {
       _chatRepository.deleteChatThreadAndMessages(threadId);
   Future<void> clearChatMessages(String threadId) =>
       _chatRepository.clearChatMessages(threadId);
+  Stream<List<ChatTypingState>> watchTypingStates(
+    String threadId, {
+    Duration activeThreshold = const Duration(seconds: 7),
+  }) => _chatRepository.watchTypingStates(
+    threadId,
+    activeThreshold: activeThreshold,
+  );
+  Future<void> touchTyping({
+    required String threadId,
+    required String userId,
+    required bool isTyping,
+  }) => _chatRepository.touchTyping(
+    threadId: threadId,
+    userId: userId,
+    isTyping: isTyping,
+  );
+  Stream<List<ChatUserPresence>> watchPresence({
+    Duration activeThreshold = const Duration(minutes: 2),
+  }) => _chatRepository.watchPresence(activeThreshold: activeThreshold);
+  Future<void> touchPresence({required String userId, required String state}) =>
+      _chatRepository.touchPresence(userId: userId, state: state);
+  Stream<List<ChatModerationEvent>> watchModerationEvents({
+    String? threadId,
+    String? targetUserId,
+  }) => _chatRepository.watchModerationEvents(
+    threadId: threadId,
+    targetUserId: targetUserId,
+  );
+  Future<void> saveModerationEvent(ChatModerationEvent event) =>
+      _chatRepository.saveModerationEvent(event);
+  Future<List<ChatSearchResult>> searchMessages(
+    ChatSearchQuery query, {
+    int limit = 100,
+  }) => _chatRepository.searchMessages(query, limit: limit);
   Future<ChatThread> ensureDirectMessageThread({
     required String localUserId,
     required String peerUserId,
