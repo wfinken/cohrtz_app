@@ -4,16 +4,23 @@ import 'dart:convert';
 import 'package:cohortz/shared/database/database.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sql_crdt/sql_crdt.dart';
 import 'hlc_compat.dart';
 
 typedef VectorClock = Map<String, String>;
 
 class CrdtService extends ChangeNotifier {
+  static const String _roomStoragePrefix = 'crdt_web_room_v1_';
   final Map<String, _WebRoomState> _rooms = {};
+  final Map<String, _WebRoomState> _roomsByStorageKey = {};
+  final Map<String, String> _storageKeyByRoom = {};
   final Map<String, Future<void>> _initializationFutures = {};
   final Map<String, StreamController<Uint8List>> _updateControllers = {};
   final Map<String, StreamController<Set<String>>> _changeControllers = {};
+  final Map<String, Timer> _pendingPersistTimers = {};
+  SharedPreferences? _prefs;
+  Future<void>? _prefsInitializationFuture;
 
   Stream<Uint8List> getStream(String roomName) {
     _updateControllers.putIfAbsent(
@@ -37,13 +44,27 @@ class CrdtService extends ChangeNotifier {
     String? basePath,
     String? databaseName,
   }) async {
-    final key = '$roomName:${databaseName ?? ""}';
+    final storageRoomName = _effectiveStorageRoomName(roomName, databaseName);
+    final storageKey = _storageKeyForRoom(storageRoomName);
+    final key = '$roomName:$storageKey';
     if (_initializationFutures.containsKey(key)) {
       return _initializationFutures[key];
     }
 
-    final future = Future<void>(() {
-      _rooms.putIfAbsent(roomName, () => _WebRoomState(nodeId: nodeId));
+    final future = Future<void>(() async {
+      final existing = _roomsByStorageKey[storageKey];
+      if (existing != null) {
+        existing.nodeId = nodeId;
+        _rooms[roomName] = existing;
+      } else {
+        final restored = await _restoreRoom(storageKey);
+        final room =
+            restored ?? _WebRoomState(nodeId: nodeId, storageKey: storageKey);
+        room.nodeId = nodeId;
+        _roomsByStorageKey[storageKey] = room;
+        _rooms[roomName] = room;
+      }
+      _storageKeyByRoom[roomName] = storageKey;
       _updateControllers.putIfAbsent(
         roomName,
         () => StreamController<Uint8List>.broadcast(),
@@ -78,6 +99,7 @@ class CrdtService extends ChangeNotifier {
       tableName: [record.toCrdtRecord()],
     });
     _emitRoomChanged(roomName, {tableName.toLowerCase()});
+    _schedulePersist(roomName);
   }
 
   Future<void> delete(String roomName, String key, String tableName) async {
@@ -103,6 +125,7 @@ class CrdtService extends ChangeNotifier {
       tableName: [record.toCrdtRecord()],
     });
     _emitRoomChanged(roomName, {tableName.toLowerCase()});
+    _schedulePersist(roomName);
   }
 
   Future<String?> get(
@@ -143,6 +166,7 @@ class CrdtService extends ChangeNotifier {
 
     if (changedTables.isNotEmpty) {
       _emitRoomChanged(roomName, changedTables);
+      _schedulePersist(roomName);
     }
   }
 
@@ -351,6 +375,11 @@ class CrdtService extends ChangeNotifier {
   }
 
   Future<void> deleteDatabase(String roomName, {String? databaseName}) async {
+    final storageRoomName = _effectiveStorageRoomName(roomName, databaseName);
+    final storageKey =
+        _storageKeyByRoom.remove(roomName) ??
+        _storageKeyForRoom(storageRoomName);
+
     _rooms.remove(roomName);
 
     final updateController = _updateControllers.remove(roomName);
@@ -358,11 +387,31 @@ class CrdtService extends ChangeNotifier {
     final changeController = _changeControllers.remove(roomName);
     await changeController?.close();
 
+    final hasRemainingAlias = _storageKeyByRoom.values.contains(storageKey);
+    if (!hasRemainingAlias) {
+      _roomsByStorageKey.remove(storageKey);
+      _pendingPersistTimers.remove(storageKey)?.cancel();
+      final prefs = await _getPrefs();
+      await prefs.remove('$_roomStoragePrefix$storageKey');
+    }
+
     notifyListeners();
   }
 
   _WebRoomState _ensureRoom(String roomName) {
-    return _rooms.putIfAbsent(roomName, () => _WebRoomState(nodeId: 'web'));
+    final existing = _rooms[roomName];
+    if (existing != null) return existing;
+
+    final storageKey = _storageKeyByRoom.putIfAbsent(
+      roomName,
+      () => _storageKeyForRoom(roomName),
+    );
+    final room = _roomsByStorageKey.putIfAbsent(
+      storageKey,
+      () => _WebRoomState(nodeId: 'web', storageKey: storageKey),
+    );
+    _rooms[roomName] = room;
+    return room;
   }
 
   void _emitLocalChangeset(String roomName, CrdtChangeset changeset) {
@@ -382,6 +431,78 @@ class CrdtService extends ChangeNotifier {
     if (changedTables.isEmpty) return;
     _changeControllers[roomName]?.add(changedTables);
     notifyListeners();
+  }
+
+  String _effectiveStorageRoomName(String roomName, String? databaseName) {
+    if (databaseName == null || databaseName.trim().isEmpty) {
+      return roomName;
+    }
+    return databaseName;
+  }
+
+  String _storageKeyForRoom(String roomName) => Uri.encodeComponent(roomName);
+
+  Future<SharedPreferences> _getPrefs() async {
+    if (_prefs != null) return _prefs!;
+    if (_prefsInitializationFuture != null) {
+      await _prefsInitializationFuture;
+      return _prefs!;
+    }
+
+    final future = Future<void>(() async {
+      _prefs = await SharedPreferences.getInstance();
+    });
+    _prefsInitializationFuture = future;
+    try {
+      await future;
+    } finally {
+      _prefsInitializationFuture = null;
+    }
+    return _prefs!;
+  }
+
+  Future<_WebRoomState?> _restoreRoom(String storageKey) async {
+    try {
+      final prefs = await _getPrefs();
+      final encoded = prefs.getString('$_roomStoragePrefix$storageKey');
+      if (encoded == null || encoded.isEmpty) return null;
+
+      final decoded = jsonDecode(encoded);
+      if (decoded is! Map<String, Object?>) return null;
+      return _WebRoomState.fromJson(decoded, storageKey: storageKey);
+    } catch (error) {
+      debugPrint('[CrdtService(web)] Failed to restore room: $error');
+      return null;
+    }
+  }
+
+  void _schedulePersist(String roomName) {
+    final storageKey = _storageKeyByRoom[roomName];
+    if (storageKey == null) return;
+
+    _pendingPersistTimers.remove(storageKey)?.cancel();
+    _pendingPersistTimers[storageKey] = Timer(
+      const Duration(milliseconds: 120),
+      () {
+        _pendingPersistTimers.remove(storageKey);
+        unawaited(_persistStorageKey(storageKey));
+      },
+    );
+  }
+
+  Future<void> _persistStorageKey(String storageKey) async {
+    final room = _roomsByStorageKey[storageKey];
+    if (room == null) return;
+
+    try {
+      final prefs = await _getPrefs();
+      await prefs.setString(
+        '$_roomStoragePrefix$storageKey',
+        jsonEncode(room.toJson()),
+      );
+    } catch (error) {
+      debugPrint('[CrdtService(web)] Failed to persist room: $error');
+    }
   }
 
   bool _shouldRefreshQuery(
@@ -426,10 +547,71 @@ class CrdtService extends ChangeNotifier {
 }
 
 class _WebRoomState {
-  _WebRoomState({required this.nodeId});
+  _WebRoomState({required this.nodeId, required this.storageKey});
 
-  final String nodeId;
+  String nodeId;
+  final String storageKey;
   final Map<String, Map<String, _WebRecord>> tables = {};
+
+  Map<String, Object?> toJson() {
+    final encodedTables = <String, List<Map<String, Object?>>>{};
+    for (final entry in tables.entries) {
+      encodedTables[entry.key] = entry.value.values
+          .map((record) => record.toStorageMap())
+          .toList();
+    }
+    return {'nodeId': nodeId, 'tables': encodedTables};
+  }
+
+  factory _WebRoomState.fromJson(
+    Map<String, Object?> json, {
+    required String storageKey,
+  }) {
+    final state = _WebRoomState(
+      nodeId: (json['nodeId'] as String?) ?? 'web',
+      storageKey: storageKey,
+    );
+
+    final rawTables = json['tables'];
+    if (rawTables is Map) {
+      for (final entry in rawTables.entries) {
+        final tableName = entry.key?.toString();
+        if (tableName == null || tableName.isEmpty) continue;
+        final records = <String, _WebRecord>{};
+        final rawRows = entry.value;
+        if (rawRows is List) {
+          for (final row in rawRows) {
+            if (row is Map<String, Object?>) {
+              final record = _WebRecord.fromAny(
+                row,
+                defaultNodeId: state.nodeId,
+              );
+              if (record.id.isEmpty) continue;
+              records[record.id] = record;
+            } else if (row is Map) {
+              final normalized = <String, Object?>{};
+              for (final item in row.entries) {
+                final key = item.key?.toString();
+                if (key == null || key.isEmpty) continue;
+                normalized[key] = item.value;
+              }
+              final record = _WebRecord.fromAny(
+                normalized,
+                defaultNodeId: state.nodeId,
+              );
+              if (record.id.isEmpty) continue;
+              records[record.id] = record;
+            }
+          }
+        }
+        if (records.isNotEmpty) {
+          state.tables[tableName] = records;
+        }
+      }
+    }
+
+    return state;
+  }
 }
 
 class _WebRecord {
@@ -460,6 +642,14 @@ class _WebRecord {
     'value': value,
     'node_id': nodeId,
     'hlc': hlc,
+    'is_deleted': isDeleted ? 1 : 0,
+  };
+
+  Map<String, Object?> toStorageMap() => {
+    'id': id,
+    'value': value,
+    'node_id': nodeId,
+    'hlc': hlc.toString(),
     'is_deleted': isDeleted ? 1 : 0,
   };
 
