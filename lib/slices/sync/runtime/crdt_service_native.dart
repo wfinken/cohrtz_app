@@ -130,8 +130,26 @@ class CrdtService extends ChangeNotifier {
     // Secure Key Management
     if (!kIsWeb && _dbKey == null) {
       final secureStorage = SecureStorageService();
-      _dbKey = await secureStorage.read('device_db_key');
-      if (_dbKey == null) {
+      try {
+        _dbKey = await secureStorage.read('device_db_key');
+      } catch (e) {
+        // Recover from stale/corrupted secure payloads (e.g. rotated MAC context).
+        Log.w(
+          'CrdtService',
+          'Unable to decrypt device_db_key; resetting and regenerating. Error: $e',
+        );
+        try {
+          await secureStorage.delete('device_db_key');
+        } catch (deleteError) {
+          Log.w(
+            'CrdtService',
+            'Failed to delete unreadable device_db_key: $deleteError',
+          );
+        }
+        _dbKey = null;
+      }
+
+      if (_dbKey == null || _dbKey!.isEmpty) {
         // Generate new secure key (32 bytes hex encoded or base64)
         // Using EncryptionService to get secure random bytes
         final encryptionService = EncryptionService();
