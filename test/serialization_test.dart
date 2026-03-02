@@ -68,11 +68,23 @@ void main() {
         content: 'Hello',
         timestamp: DateTime.utc(2025, 1, 1),
         threadId: 'thread1',
+        editedAt: DateTime.utc(2025, 1, 1, 1),
+        isPinned: true,
+        mentionUserIds: const ['u2'],
+        mentionRoleIds: const ['r1'],
+        mentionsEveryone: true,
+        reactions: const {
+          ':thumbsup:': ['u1', 'u2'],
+        },
       );
       final json = msg.toJson();
       final decoded = ChatMessageMapper.fromJson(json);
       expect(decoded.id, msg.id);
       expect(decoded.content, msg.content);
+      expect(decoded.mentionUserIds, contains('u2'));
+      expect(decoded.mentionsEveryone, isTrue);
+      expect(decoded.isPinned, isTrue);
+      expect(decoded.reactions[':thumbsup:']?.length, 2);
     });
 
     test('ChatThread serialization', () {
@@ -83,12 +95,79 @@ void main() {
         participantIds: ['u1', 'u2'],
         createdBy: 'u1',
         createdAt: DateTime.utc(2025, 1, 1),
+        parentChannelId: 'chat:channel:general',
+        parentMessageId: 'm1',
+        memberIds: const ['u1'],
+        lastActivityAt: DateTime.utc(2025, 1, 1, 1),
       );
       final json = thread.toJson();
       final decoded = ChatThreadMapper.fromJson(json);
       expect(decoded.id, thread.id);
       expect(decoded.name, thread.name);
       expect(decoded.participantIds, contains('u1'));
+      expect(decoded.parentMessageId, 'm1');
+    });
+
+    test('ChatModerationEvent serialization', () {
+      final event = ChatModerationEvent(
+        id: 'mod:1',
+        action: 'ban',
+        actorId: 'u1',
+        targetUserId: 'u2',
+        threadId: 'chat:channel:general',
+        messageId: 'm1',
+        reason: 'abuse',
+        timestamp: DateTime.utc(2025, 1, 1),
+      );
+      final json = event.toJson();
+      final decoded = ChatModerationEventMapper.fromJson(json);
+      expect(decoded.action, 'ban');
+      expect(decoded.targetUserId, 'u2');
+      expect(decoded.reason, 'abuse');
+    });
+
+    test('ChatPresence serialization', () {
+      final typing = ChatTypingState(
+        threadId: 'thread1',
+        userId: 'u1',
+        lastActiveAt: DateTime.utc(2025, 1, 1),
+      );
+      final typingJson = typing.toJson();
+      final typingDecoded = ChatTypingStateMapper.fromJson(typingJson);
+      expect(typingDecoded.threadId, 'thread1');
+
+      final presence = ChatUserPresence(
+        userId: 'u1',
+        state: 'online',
+        lastSeenAt: DateTime.utc(2025, 1, 1),
+      );
+      final presenceJson = presence.toJson();
+      final presenceDecoded = ChatUserPresenceMapper.fromJson(presenceJson);
+      expect(presenceDecoded.isOnline, isTrue);
+    });
+
+    test('ChatSearch serialization', () {
+      final query = ChatSearchQuery(
+        keyword: 'hello',
+        threadId: 'thread1',
+        hasReply: true,
+      );
+      final queryJson = query.toJson();
+      final queryDecoded = ChatSearchQueryMapper.fromJson(queryJson);
+      expect(queryDecoded.keyword, 'hello');
+      expect(queryDecoded.hasReply, isTrue);
+
+      final message = ChatMessage(
+        id: 'm2',
+        senderId: 'u1',
+        content: 'hello world',
+        timestamp: DateTime.utc(2025, 1, 1),
+      );
+      final result = ChatSearchResult(message: message, snippet: 'hello ...');
+      final resultJson = result.toJson();
+      final resultDecoded = ChatSearchResultMapper.fromJson(resultJson);
+      expect(resultDecoded.snippet, 'hello ...');
+      expect(resultDecoded.message.id, 'm2');
     });
 
     test('UserProfile serialization', () {
