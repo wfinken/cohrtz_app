@@ -343,7 +343,7 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
                       ),
                       _buildNotificationToggle(
                         context,
-                        title: '@ACL Group Mentions',
+                        title: '@Group Mentions',
                         subtitle:
                             'Notify when a group you belong to is mentioned.',
                         value: _notificationSettings.chatAclGroupMentions,

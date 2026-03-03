@@ -56,7 +56,7 @@ void main() {
       expect(allowed.mentionsEveryone, isTrue);
     });
 
-    test('extracts ACL group mentions', () {
+    test('extracts group mentions', () {
       final result = parser.parse(
         content: 'hello @parents',
         users: users,
