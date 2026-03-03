@@ -72,6 +72,7 @@ void main() {
         isPinned: true,
         mentionUserIds: const ['u2'],
         mentionRoleIds: const ['r1'],
+        mentionAclGroupIds: const ['lg1'],
         mentionsEveryone: true,
         reactions: const {
           ':thumbsup:': ['u1', 'u2'],
@@ -82,6 +83,7 @@ void main() {
       expect(decoded.id, msg.id);
       expect(decoded.content, msg.content);
       expect(decoded.mentionUserIds, contains('u2'));
+      expect(decoded.mentionAclGroupIds, contains('lg1'));
       expect(decoded.mentionsEveryone, isTrue);
       expect(decoded.isPinned, isTrue);
       expect(decoded.reactions[':thumbsup:']?.length, 2);

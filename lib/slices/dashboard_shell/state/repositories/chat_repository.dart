@@ -767,7 +767,8 @@ class ChatRepository extends RoomRepositoryBase implements IChatRepository {
       if (query.hasMention &&
           !message.mentionsEveryone &&
           message.mentionUserIds.isEmpty &&
-          message.mentionRoleIds.isEmpty) {
+          message.mentionRoleIds.isEmpty &&
+          message.mentionAclGroupIds.isEmpty) {
         return false;
       }
       if (keyword.isEmpty) return true;

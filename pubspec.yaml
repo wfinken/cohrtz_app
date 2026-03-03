@@ -32,7 +32,8 @@ dependencies:
   flutter_local_notifications: ^18.0.1
   # Security packages
   flutter_dashboard_grid:
-    path: ../flutter_dashboard_grid
+    git: 
+      url: https://github.com/wfinken/flutter_dashboard_grid
   dart_mappable: ^4.2.0
   flutter_background_service: ^5.0.0
   crop_your_image: ^1.1.0

@@ -232,6 +232,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
       data: (threads) {
         final profiles = profilesAsync.value ?? const <UserProfile>[];
         final roles = rolesAsync.value ?? const <Role>[];
+        final logicalGroups = ref.watch(logicalGroupsProvider);
         final userMap = {for (final p in profiles) p.id: p.displayName};
         final visibleThreads = _visibleThreads(threads, myId);
         final selectedThreadId = _effectiveThreadId(visibleThreads);
@@ -314,6 +315,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
                           myId: myId,
                           profiles: profiles,
                           roles: roles,
+                          logicalGroups: logicalGroups,
                           canEditChat: canEditChat,
                           canEditChannels: canEditChannels || canManageChat,
                           canDeleteChannels: canDeleteChannels || canManageChat,
@@ -734,6 +736,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
     required String myId,
     required List<UserProfile> profiles,
     required List<Role> roles,
+    required List<LogicalGroup> logicalGroups,
     required bool canEditChat,
     required bool canEditChannels,
     required bool canDeleteChannels,
@@ -886,6 +889,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
           threads: threads,
           profiles: profiles,
           roles: roles,
+          logicalGroups: logicalGroups,
           canMentionEveryone: canMentionEveryone,
           canManageMembers: canManageMembers,
           leading: showInlineThreadPicker
@@ -903,6 +907,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
             myId: myId,
             profiles: profiles,
             roles: roles,
+            logicalGroups: logicalGroups,
             canMentionEveryone: canMentionEveryone,
             canManageMembers: canManageMembers,
           ),
@@ -1763,6 +1768,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
     required List<ChatThread> threads,
     required List<UserProfile> profiles,
     required List<Role> roles,
+    required List<LogicalGroup> logicalGroups,
     required bool canMentionEveryone,
     required bool canManageMembers,
     Widget? leading,
@@ -1844,6 +1850,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
                   userId: myId,
                   profiles: profiles,
                   roles: roles,
+                  logicalGroups: logicalGroups,
                   threads: threads,
                   canMentionEveryone: canMentionEveryone,
                 );
@@ -1917,6 +1924,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
                         userId: myId,
                         profiles: profiles,
                         roles: roles,
+                        logicalGroups: logicalGroups,
                         threads: threads,
                         canMentionEveryone: canMentionEveryone,
                       )
@@ -1927,6 +1935,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
                         userId: myId,
                         profiles: profiles,
                         roles: roles,
+                        logicalGroups: logicalGroups,
                         threads: threads,
                         canMentionEveryone: canMentionEveryone,
                       )
@@ -1958,6 +1967,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
                               userId: myId,
                               profiles: profiles,
                               roles: roles,
+                              logicalGroups: logicalGroups,
                               threads: threads,
                               canMentionEveryone: canMentionEveryone,
                             ),
@@ -2426,6 +2436,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
     required String myId,
     required List<UserProfile> profiles,
     required List<Role> roles,
+    required List<LogicalGroup> logicalGroups,
     required bool canMentionEveryone,
     required bool canManageMembers,
   }) async {
@@ -2521,6 +2532,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
       content: content,
       users: profiles,
       roles: roles,
+      aclGroups: logicalGroups,
       canMentionEveryone: canMentionEveryone,
     );
     if ((content.contains('@everyone') || content.contains('@here')) &&
@@ -2546,6 +2558,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
       replyToMessageId: _replyToMessageId,
       mentionUserIds: mentions.userIds,
       mentionRoleIds: mentions.roleIds,
+      mentionAclGroupIds: mentions.aclGroupIds,
       mentionsEveryone: mentions.mentionsEveryone,
     );
 
@@ -2586,6 +2599,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
     required String userId,
     required List<UserProfile> profiles,
     required List<Role> roles,
+    required List<LogicalGroup> logicalGroups,
     required List<ChatThread> threads,
     required bool canMentionEveryone,
   }) {
@@ -2593,6 +2607,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
     _updateComposerSuggestions(
       profiles: profiles,
       roles: roles,
+      logicalGroups: logicalGroups,
       threads: threads,
       canMentionEveryone: canMentionEveryone,
     );
@@ -2618,6 +2633,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
   void _updateComposerSuggestions({
     required List<UserProfile> profiles,
     required List<Role> roles,
+    required List<LogicalGroup> logicalGroups,
     required List<ChatThread> threads,
     required bool canMentionEveryone,
   }) {
@@ -2657,6 +2673,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
         query: query,
         profiles: profiles,
         roles: roles,
+        logicalGroups: logicalGroups,
         canMentionEveryone: canMentionEveryone,
       );
     } else if (trigger == '#') {
@@ -2683,6 +2700,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
     required String query,
     required List<UserProfile> profiles,
     required List<Role> roles,
+    required List<LogicalGroup> logicalGroups,
     required bool canMentionEveryone,
   }) {
     final normalizedQuery = query.trim().toLowerCase();
@@ -2733,6 +2751,25 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
           insertText: '@$handle',
           subtitle: 'Role',
           icon: Icons.shield_outlined,
+        ),
+      );
+      if (suggestions.length >= 12) break;
+    }
+
+    final sortedGroups = [
+      ...logicalGroups.where((group) => group.id != AclGroupIds.everyone),
+    ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    for (final group in sortedGroups) {
+      if (!matches(group.name)) continue;
+      final handle = _normalizeMentionHandle(group.name);
+      suggestions.add(
+        _ComposerSuggestion(
+          kind: _ComposerSuggestionKind.mention,
+          id: 'acl:${group.id}',
+          label: '@${group.name}',
+          insertText: '@$handle',
+          subtitle: 'ACL group',
+          icon: Icons.group_work_outlined,
         ),
       );
       if (suggestions.length >= 12) break;
@@ -2818,6 +2855,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
     required String userId,
     required List<UserProfile> profiles,
     required List<Role> roles,
+    required List<LogicalGroup> logicalGroups,
     required List<ChatThread> threads,
     required bool canMentionEveryone,
   }) {
@@ -2844,6 +2882,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
       userId: userId,
       profiles: profiles,
       roles: roles,
+      logicalGroups: logicalGroups,
       threads: threads,
       canMentionEveryone: canMentionEveryone,
     );

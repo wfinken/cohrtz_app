@@ -176,6 +176,7 @@ class GroupNotificationSettings with GroupNotificationSettingsMappable {
   final bool chatMessages;
   final bool chatDirectMentions;
   final bool chatRoleMentions;
+  final bool chatAclGroupMentions;
   final bool chatEveryoneMentions;
   final bool newPolls;
   final bool closedPolls;
@@ -192,6 +193,7 @@ class GroupNotificationSettings with GroupNotificationSettingsMappable {
     this.chatMessages = true,
     this.chatDirectMentions = true,
     this.chatRoleMentions = true,
+    this.chatAclGroupMentions = true,
     this.chatEveryoneMentions = true,
     this.newPolls = true,
     this.closedPolls = true,
@@ -210,6 +212,7 @@ class GroupNotificationSettings with GroupNotificationSettingsMappable {
       chatMessages: enabled,
       chatDirectMentions: enabled,
       chatRoleMentions: enabled,
+      chatAclGroupMentions: enabled,
       chatEveryoneMentions: enabled,
       newPolls: enabled,
       closedPolls: enabled,
