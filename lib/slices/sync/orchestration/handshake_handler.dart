@@ -121,15 +121,21 @@ class HandshakeHandler {
     _knownPublicKeysByRoom.putIfAbsent(roomName, () => {})[packet.senderId] =
         packet.payload;
 
-    var learnedNewKeyMaterial = existingSigning == null;
+    final signingKeyChanged =
+        existingSigning == null || !listEquals(existingSigning, packet.payload);
+    var learnedNewKeyMaterial = signingKeyChanged;
 
     // Store encryption key if present
     if (packet.hasEncryptionPublicKey()) {
+      final incomingEncryptionKey = packet.encryptionPublicKey;
       _knownEncryptionKeysByRoom.putIfAbsent(
         roomName,
         () => {},
-      )[packet.senderId] = packet.encryptionPublicKey;
-      if (existingEncryption == null) {
+      )[packet.senderId] = incomingEncryptionKey;
+      final encryptionKeyChanged =
+          existingEncryption == null ||
+          !listEquals(existingEncryption, incomingEncryptionKey);
+      if (encryptionKeyChanged) {
         learnedNewKeyMaterial = true;
       }
       Log.d('HandshakeHandler', 'Stored Encryption Key for ${packet.senderId}');
@@ -141,7 +147,11 @@ class HandshakeHandler {
 
     Log.d('HandshakeHandler', 'Stored Public Key for ${packet.senderId}');
 
-    // Return onboarding key: encryption key (X25519) is prioritized for TreeKEM
+    // Return onboarding key only when key material is new/changed.
+    // Repeated handshakes with the same keys should not retrigger TreeKEM onboarding.
+    if (!learnedNewKeyMaterial) return null;
+
+    // Return onboarding key: encryption key (X25519) is prioritized for TreeKEM.
     if (packet.hasEncryptionPublicKey() &&
         packet.encryptionPublicKey.isNotEmpty) {
       return packet.encryptionPublicKey;

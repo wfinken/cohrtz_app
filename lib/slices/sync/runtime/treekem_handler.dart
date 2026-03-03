@@ -160,7 +160,15 @@ class TreeKemHandler {
     Log.d('TreeKemHandler', 'Received TreeKEM_UPDATE from $senderId');
 
     // Map UpdatePathNode back from JSON
-    final list = data['updatePath'] as List;
+    final rawPath = data['updatePath'];
+    if (rawPath is! List) {
+      Log.w(
+        'TreeKemHandler',
+        'Ignoring TreeKEM update from $senderId in $roomName: missing/invalid updatePath.',
+      );
+      return;
+    }
+    final list = rawPath;
     final updatePath = list.map((n) {
       final nodeMap = n as Map<String, dynamic>;
       final encryptedMap =
@@ -173,7 +181,20 @@ class TreeKemHandler {
       );
     }).toList();
 
-    int senderLeafIdx = data['senderLeafIndex'];
+    final senderLeafIdxRaw = data['senderLeafIndex'];
+    final senderLeafIdx = senderLeafIdxRaw is int
+        ? senderLeafIdxRaw
+        : int.tryParse(senderLeafIdxRaw?.toString() ?? '');
+    if (senderLeafIdx == null ||
+        senderLeafIdx < 0 ||
+        senderLeafIdx >= service.tree.leafCount) {
+      Log.w(
+        'TreeKemHandler',
+        'Ignoring TreeKEM update from $senderId in $roomName: senderLeafIndex=$senderLeafIdxRaw out of bounds (leafCount=${service.tree.leafCount}).',
+      );
+      return;
+    }
+
     await service.applyUpdate(senderLeafIdx, updatePath);
     final incomingEpoch = _readEpochValue(data['epoch']);
     final currentEpoch = _epochs[roomName] ?? 1;

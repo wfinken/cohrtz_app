@@ -174,6 +174,9 @@ class GroupNotificationSettings with GroupNotificationSettingsMappable {
   final bool calendarEvents;
   final bool vaultItems;
   final bool chatMessages;
+  final bool chatDirectMentions;
+  final bool chatRoleMentions;
+  final bool chatEveryoneMentions;
   final bool newPolls;
   final bool closedPolls;
   final bool pollVotes;
@@ -187,6 +190,9 @@ class GroupNotificationSettings with GroupNotificationSettingsMappable {
     this.calendarEvents = true,
     this.vaultItems = true,
     this.chatMessages = true,
+    this.chatDirectMentions = true,
+    this.chatRoleMentions = true,
+    this.chatEveryoneMentions = true,
     this.newPolls = true,
     this.closedPolls = true,
     this.pollVotes = true,
@@ -202,6 +208,9 @@ class GroupNotificationSettings with GroupNotificationSettingsMappable {
       calendarEvents: enabled,
       vaultItems: enabled,
       chatMessages: enabled,
+      chatDirectMentions: enabled,
+      chatRoleMentions: enabled,
+      chatEveryoneMentions: enabled,
       newPolls: enabled,
       closedPolls: enabled,
       pollVotes: enabled,

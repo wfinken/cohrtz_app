@@ -19,6 +19,7 @@ import '../../../../app/di/app_providers.dart';
 import 'package:cohortz/slices/dashboard_shell/ui/widgets/skeleton_loader.dart';
 import 'package:cohortz/slices/permissions_feature/state/logical_group_providers.dart';
 import 'package:cohortz/slices/permissions_feature/state/role_providers.dart';
+import 'package:cohortz/slices/permissions_feature/models/logical_group_model.dart';
 import 'package:cohortz/slices/permissions_feature/models/role_model.dart';
 import 'package:cohortz/slices/permissions_feature/ui/widgets/visibility_group_selector.dart';
 import 'package:cohortz/slices/chat/state/chat_mention_parser.dart';
@@ -44,6 +45,8 @@ enum _MessageAction {
   ban,
 }
 
+enum _ComposerSuggestionKind { mention, thread }
+
 class _ReactionOption {
   final String id;
   final IconData icon;
@@ -53,6 +56,24 @@ class _ReactionOption {
     required this.id,
     required this.icon,
     required this.label,
+  });
+}
+
+class _ComposerSuggestion {
+  final _ComposerSuggestionKind kind;
+  final String id;
+  final String label;
+  final String insertText;
+  final String subtitle;
+  final IconData icon;
+
+  const _ComposerSuggestion({
+    required this.kind,
+    required this.id,
+    required this.label,
+    required this.insertText,
+    required this.subtitle,
+    required this.icon,
   });
 }
 
@@ -109,6 +130,10 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
   String? _replyToMessageId;
   String? _editingMessageId;
   String? _lastOwnMessageId;
+  String? _hoveredMessageId;
+  int? _composerSuggestionStart;
+  List<_ComposerSuggestion> _composerSuggestions = const [];
+  int _composerSuggestionIndex = 0;
   String _presenceState = 'online';
   Timer? _typingTimer;
   Timer? _presenceHeartbeat;
@@ -858,6 +883,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
           isExpired: isExpired,
           selectedThreadId: selectedThread.id,
           myId: myId,
+          threads: threads,
           profiles: profiles,
           roles: roles,
           canMentionEveryone: canMentionEveryone,
@@ -908,7 +934,6 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
     };
     const timestampWidth = 42.0;
     const timestampGap = 8.0;
-    const nameGap = timestampGap;
     const usernameMaxWidth = 132.0;
     final reversedMessages = messages.reversed.toList();
     return ListView.builder(
@@ -931,155 +956,183 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
         final canEdit = isMe && !msg.isDeleted;
         final canPin = canManageMembers || canEditChat;
         final canModerate = canManageMembers && !isMe;
+        final supportsHoverActions =
+            Theme.of(context).platform != TargetPlatform.android &&
+            Theme.of(context).platform != TargetPlatform.iOS;
 
-        return Stack(
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(left: 8.0 ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (replyTo != null)
-                    Text(
-                      'Replying to ${userMap[replyTo.senderId] ?? 'Member'}: ${replyTo.content}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  Row(
-                    spacing: timestampGap,
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    children: [
+        final isHovered = _hoveredMessageId == msg.id;
+        return MouseRegion(
+          onEnter: (_) {
+            if (!supportsHoverActions) return;
+            if (_hoveredMessageId == msg.id) return;
+            setState(() => _hoveredMessageId = msg.id);
+          },
+          onExit: (_) {
+            if (!supportsHoverActions) return;
+            if (_hoveredMessageId != msg.id) return;
+            setState(() => _hoveredMessageId = null);
+          },
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(left: 8.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (replyTo != null)
                       Text(
-                        timeText,
+                        'Replying to ${userMap[replyTo.senderId] ?? 'Member'}: ${replyTo.content}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 11,
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.onSurfaceVariant,
-                          height: 1.25,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
-                      Expanded(
-                        child: Row(
-                          spacing: timestampGap,
-                          crossAxisAlignment: CrossAxisAlignment.baseline,
-                          textBaseline: TextBaseline.alphabetic,
-                          children: [
-                            ConstrainedBox(
-                              constraints: const BoxConstraints(
-                                maxWidth: usernameMaxWidth,
-                              ),
-                              child: Text(
-                                displayName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: nameColor,
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 13,
-                                  height: 1.25,
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              child: Text.rich(
-                                TextSpan(
-                                  children: [
-                                    _markdownSpans.build(
-                                      context: context,
-                                      text: msg.isDeleted
-                                          ? '[message deleted]'
-                                          : msg.content,
-                                      isDeleted: msg.isDeleted,
-                                    ),
-                                    if (msg.editedAt != null)
-                                      TextSpan(
-                                        text: ' (edited)',
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          color: Theme.of(
-                                            context,
-                                          ).colorScheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                                    if (msg.isPinned)
-                                      TextSpan(
-                                        text: ' • pinned',
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          color: Theme.of(
-                                            context,
-                                          ).colorScheme.primary,
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
+                    Row(
+                      spacing: timestampGap,
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Text(
+                          timeText,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                            height: 1.25,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  if (msg.reactions.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(
-                        left: timestampWidth + timestampGap,
-                        top: 4,
-                      ),
-                      child: Wrap(
-                        spacing: 6,
-                        runSpacing: 4,
-                        children: msg.reactions.entries.map((entry) {
-                          final reacted = entry.value.contains(myId);
-                          final icon = _reactionIcon(entry.key);
-                          return InkWell(
-                            onTap: () => repo.toggleReaction(
-                              messageId: msg.id,
-                              emoji: entry.key,
-                              userId: myId,
-                            ),
-                            borderRadius: context.appBorderRadius(10),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
+                        Expanded(
+                          child: Row(
+                            spacing: timestampGap,
+                            crossAxisAlignment: CrossAxisAlignment.baseline,
+                            textBaseline: TextBaseline.alphabetic,
+                            children: [
+                              ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  maxWidth: usernameMaxWidth,
+                                ),
+                                child: Text(
+                                  displayName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: nameColor,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13,
+                                    height: 1.25,
+                                  ),
+                                ),
                               ),
-                              decoration: BoxDecoration(
-                                color: reacted
-                                    ? Theme.of(
-                                        context,
-                                      ).colorScheme.primaryContainer
-                                    : Theme.of(
-                                        context,
-                                      ).colorScheme.surfaceContainerHighest,
-                                borderRadius: context.appBorderRadius(10),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if (icon != null)
-                                    Icon(
-                                      icon,
-                                      size: 14,
-                                      color: reacted
-                                          ? Theme.of(
-                                              context,
-                                            ).colorScheme.onPrimaryContainer
-                                          : Theme.of(
+                              Expanded(
+                                child: Text.rich(
+                                  TextSpan(
+                                    children: [
+                                      _markdownSpans.build(
+                                        context: context,
+                                        text: msg.isDeleted
+                                            ? '[message deleted]'
+                                            : msg.content,
+                                        isDeleted: msg.isDeleted,
+                                      ),
+                                      if (msg.editedAt != null)
+                                        TextSpan(
+                                          text: ' (edited)',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: Theme.of(
                                               context,
                                             ).colorScheme.onSurfaceVariant,
-                                    )
-                                  else
+                                          ),
+                                        ),
+                                      if (msg.isPinned)
+                                        TextSpan(
+                                          text: ' • pinned',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: Theme.of(
+                                              context,
+                                            ).colorScheme.primary,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (msg.reactions.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(
+                          left: timestampWidth + timestampGap,
+                          top: 4,
+                        ),
+                        child: Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: msg.reactions.entries.map((entry) {
+                            final reacted = entry.value.contains(myId);
+                            final icon = _reactionIcon(entry.key);
+                            return InkWell(
+                              onTap: () => repo.toggleReaction(
+                                messageId: msg.id,
+                                emoji: entry.key,
+                                userId: myId,
+                              ),
+                              borderRadius: context.appBorderRadius(10),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: reacted
+                                      ? Theme.of(
+                                          context,
+                                        ).colorScheme.primaryContainer
+                                      : Theme.of(
+                                          context,
+                                        ).colorScheme.surfaceContainerHighest,
+                                  borderRadius: context.appBorderRadius(10),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (icon != null)
+                                      Icon(
+                                        icon,
+                                        size: 14,
+                                        color: reacted
+                                            ? Theme.of(
+                                                context,
+                                              ).colorScheme.onPrimaryContainer
+                                            : Theme.of(
+                                                context,
+                                              ).colorScheme.onSurfaceVariant,
+                                      )
+                                    else
+                                      Text(
+                                        entry.key,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: reacted
+                                              ? Theme.of(
+                                                  context,
+                                                ).colorScheme.onPrimaryContainer
+                                              : Theme.of(
+                                                  context,
+                                                ).colorScheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    const SizedBox(width: 4),
                                     Text(
-                                      entry.key,
+                                      '${entry.value.length}',
                                       style: TextStyle(
                                         fontSize: 11,
                                         color: reacted
@@ -1091,106 +1144,367 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
                                               ).colorScheme.onSurfaceVariant,
                                       ),
                                     ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    '${entry.value.length}',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: reacted
-                                          ? Theme.of(
-                                              context,
-                                            ).colorScheme.onPrimaryContainer
-                                          : Theme.of(
-                                              context,
-                                            ).colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
-                            ),
-                          );
-                        }).toList(),
+                            );
+                          }).toList(),
+                        ),
                       ),
-                    ),
-                ],
-              ),
-            ),
-            Positioned(
-              right: 0,
-              top: -2,
-              child: PopupMenuButton<_MessageAction>(
-                tooltip: 'Message actions',
-                onSelected: (action) => _handleMessageAction(
-                  action: action,
-                  message: msg,
-                  thread: selectedThread,
-                  myId: myId,
-                  canEdit: canEdit,
-                  canDelete: canDelete,
-                  canPin: canPin,
-                  canModerate: canModerate,
-                  userMap: userMap,
-                ),
-                itemBuilder: (context) => [
-                  const PopupMenuItem(
-                    value: _MessageAction.reply,
-                    child: Text('Reply'),
-                  ),
-                  if (canEdit)
-                    const PopupMenuItem(
-                      value: _MessageAction.edit,
-                      child: Text('Edit'),
-                    ),
-                  if (canDelete)
-                    const PopupMenuItem(
-                      value: _MessageAction.delete,
-                      child: Text('Delete'),
-                    ),
-                  if (canPin)
-                    PopupMenuItem(
-                      value: _MessageAction.pinToggle,
-                      child: Text(msg.isPinned ? 'Unpin' : 'Pin'),
-                    ),
-                  const PopupMenuItem(
-                    value: _MessageAction.addReaction,
-                    child: Text('Add reaction'),
-                  ),
-                  if (!selectedThread.isDm)
-                    const PopupMenuItem(
-                      value: _MessageAction.startThread,
-                      child: Text('Start thread'),
-                    ),
-                  const PopupMenuItem(
-                    value: _MessageAction.report,
-                    child: Text('Report message'),
-                  ),
-                  if (canModerate) ...[
-                    const PopupMenuDivider(),
-                    const PopupMenuItem(
-                      value: _MessageAction.timeout,
-                      child: Text('Timeout user'),
-                    ),
-                    const PopupMenuItem(
-                      value: _MessageAction.mute,
-                      child: Text('Mute user'),
-                    ),
-                    const PopupMenuItem(
-                      value: _MessageAction.ban,
-                      child: Text('Ban user'),
-                    ),
                   ],
-                ],
-                icon: Icon(
-                  Icons.more_horiz,
-                  size: 18,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
-            ),
-          ],
+              Positioned(
+                right: 0,
+                top: -18,
+                child: supportsHoverActions
+                    ? AnimatedOpacity(
+                        duration: const Duration(milliseconds: 120),
+                        opacity: isHovered ? 1 : 0,
+                        child: IgnorePointer(
+                          ignoring: !isHovered,
+                          child: _buildMessageActionToolbar(
+                            message: msg,
+                            selectedThread: selectedThread,
+                            myId: myId,
+                            canEdit: canEdit,
+                            canDelete: canDelete,
+                            canPin: canPin,
+                            canModerate: canModerate,
+                            userMap: userMap,
+                          ),
+                        ),
+                      )
+                    : _buildMessageOverflowMenu(
+                        message: msg,
+                        selectedThread: selectedThread,
+                        myId: myId,
+                        canEdit: canEdit,
+                        canDelete: canDelete,
+                        canPin: canPin,
+                        canModerate: canModerate,
+                        userMap: userMap,
+                        iconSize: 18,
+                        padding: EdgeInsets.zero,
+                        splashRadius: 18,
+                      ),
+              ),
+            ],
+          ),
         );
       },
     );
+  }
+
+  Widget _buildMessageOverflowMenu({
+    required ChatMessage message,
+    required ChatThread selectedThread,
+    required String myId,
+    required bool canEdit,
+    required bool canDelete,
+    required bool canPin,
+    required bool canModerate,
+    required Map<String, String> userMap,
+    required double iconSize,
+    required EdgeInsetsGeometry padding,
+    required double splashRadius,
+  }) {
+    final theme = Theme.of(context);
+    return PopupMenuButton<_MessageAction>(
+      tooltip: 'More actions',
+      onSelected: (action) => _handleMessageAction(
+        action: action,
+        message: message,
+        thread: selectedThread,
+        myId: myId,
+        canEdit: canEdit,
+        canDelete: canDelete,
+        canPin: canPin,
+        canModerate: canModerate,
+        userMap: userMap,
+      ),
+      itemBuilder: (context) => _buildMessageActionMenuItems(
+        message: message,
+        selectedThread: selectedThread,
+        canEdit: canEdit,
+        canDelete: canDelete,
+        canPin: canPin,
+        canModerate: canModerate,
+      ),
+      icon: Icon(
+        Icons.more_horiz,
+        size: iconSize,
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
+      padding: padding,
+      splashRadius: splashRadius,
+    );
+  }
+
+  Widget _buildMessageActionToolbar({
+    required ChatMessage message,
+    required ChatThread selectedThread,
+    required String myId,
+    required bool canEdit,
+    required bool canDelete,
+    required bool canPin,
+    required bool canModerate,
+    required Map<String, String> userMap,
+  }) {
+    final theme = Theme.of(context);
+    final quickActions = <_MessageAction>[
+      _MessageAction.reply,
+      _MessageAction.addReaction,
+      if (!selectedThread.isDm) _MessageAction.startThread,
+      if (canPin) _MessageAction.pinToggle,
+      if (canEdit) _MessageAction.edit,
+      if (canDelete) _MessageAction.delete,
+    ];
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface.withValues(alpha: 0.98),
+        border: Border.all(color: theme.dividerColor),
+        borderRadius: context.appBorderRadius(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final action in quickActions)
+            _buildMessageActionIconButton(
+              icon: _messageActionIcon(action, message),
+              tooltip: _messageActionLabel(action, message),
+              onTap: () => _handleMessageAction(
+                action: action,
+                message: message,
+                thread: selectedThread,
+                myId: myId,
+                canEdit: canEdit,
+                canDelete: canDelete,
+                canPin: canPin,
+                canModerate: canModerate,
+                userMap: userMap,
+              ),
+            ),
+          _buildMessageOverflowMenu(
+            message: message,
+            selectedThread: selectedThread,
+            myId: myId,
+            canEdit: canEdit,
+            canDelete: canDelete,
+            canPin: canPin,
+            canModerate: canModerate,
+            userMap: userMap,
+            iconSize: 16,
+            padding: const EdgeInsets.all(2),
+            splashRadius: 16,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMessageActionIconButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onTap,
+  }) {
+    final color = Theme.of(context).colorScheme.onSurfaceVariant;
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        borderRadius: context.appBorderRadius(8),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: Icon(icon, size: 16, color: color),
+        ),
+      ),
+    );
+  }
+
+  IconData _messageActionIcon(_MessageAction action, ChatMessage message) {
+    switch (action) {
+      case _MessageAction.reply:
+        return Icons.reply_rounded;
+      case _MessageAction.edit:
+        return Icons.edit_outlined;
+      case _MessageAction.delete:
+        return Icons.delete_outline_rounded;
+      case _MessageAction.pinToggle:
+        return message.isPinned ? Icons.push_pin : Icons.push_pin_outlined;
+      case _MessageAction.addReaction:
+        return Icons.add_reaction_outlined;
+      case _MessageAction.startThread:
+        return Icons.forum_outlined;
+      case _MessageAction.report:
+        return Icons.flag_outlined;
+      case _MessageAction.timeout:
+        return Icons.timer_off_outlined;
+      case _MessageAction.mute:
+        return Icons.volume_off_outlined;
+      case _MessageAction.ban:
+        return Icons.block_outlined;
+    }
+  }
+
+  String _messageActionLabel(_MessageAction action, ChatMessage message) {
+    switch (action) {
+      case _MessageAction.reply:
+        return 'Reply';
+      case _MessageAction.edit:
+        return 'Edit';
+      case _MessageAction.delete:
+        return 'Delete';
+      case _MessageAction.pinToggle:
+        return message.isPinned ? 'Unpin' : 'Pin';
+      case _MessageAction.addReaction:
+        return 'Add reaction';
+      case _MessageAction.startThread:
+        return 'Start thread';
+      case _MessageAction.report:
+        return 'Report message';
+      case _MessageAction.timeout:
+        return 'Timeout user';
+      case _MessageAction.mute:
+        return 'Mute user';
+      case _MessageAction.ban:
+        return 'Ban user';
+    }
+  }
+
+  List<PopupMenuEntry<_MessageAction>> _buildMessageActionMenuItems({
+    required ChatMessage message,
+    required ChatThread selectedThread,
+    required bool canEdit,
+    required bool canDelete,
+    required bool canPin,
+    required bool canModerate,
+  }) {
+    return [
+      PopupMenuItem(
+        value: _MessageAction.reply,
+        child: Row(
+          spacing: 8,
+          children: [
+            Icon(_messageActionIcon(_MessageAction.reply, message), size: 16),
+            const Text('Reply'),
+          ],
+        ),
+      ),
+      if (canEdit)
+        PopupMenuItem(
+          value: _MessageAction.edit,
+          child: Row(
+            spacing: 8,
+            children: [
+              Icon(_messageActionIcon(_MessageAction.edit, message), size: 16),
+              const Text('Edit'),
+            ],
+          ),
+        ),
+      if (canDelete)
+        PopupMenuItem(
+          value: _MessageAction.delete,
+          child: Row(
+            spacing: 8,
+            children: [
+              Icon(
+                _messageActionIcon(_MessageAction.delete, message),
+                size: 16,
+              ),
+              const Text('Delete'),
+            ],
+          ),
+        ),
+      if (canPin)
+        PopupMenuItem(
+          value: _MessageAction.pinToggle,
+          child: Row(
+            spacing: 8,
+            children: [
+              Icon(
+                _messageActionIcon(_MessageAction.pinToggle, message),
+                size: 16,
+              ),
+              Text(message.isPinned ? 'Unpin' : 'Pin'),
+            ],
+          ),
+        ),
+      PopupMenuItem(
+        value: _MessageAction.addReaction,
+        child: Row(
+          spacing: 8,
+          children: [
+            Icon(
+              _messageActionIcon(_MessageAction.addReaction, message),
+              size: 16,
+            ),
+            const Text('Add reaction'),
+          ],
+        ),
+      ),
+      if (!selectedThread.isDm)
+        PopupMenuItem(
+          value: _MessageAction.startThread,
+          child: Row(
+            spacing: 8,
+            children: [
+              Icon(
+                _messageActionIcon(_MessageAction.startThread, message),
+                size: 16,
+              ),
+              const Text('Start thread'),
+            ],
+          ),
+        ),
+      PopupMenuItem(
+        value: _MessageAction.report,
+        child: Row(
+          spacing: 8,
+          children: [
+            Icon(_messageActionIcon(_MessageAction.report, message), size: 16),
+            const Text('Report message'),
+          ],
+        ),
+      ),
+      if (canModerate) ...[
+        const PopupMenuDivider(),
+        PopupMenuItem(
+          value: _MessageAction.timeout,
+          child: Row(
+            spacing: 8,
+            children: [
+              Icon(
+                _messageActionIcon(_MessageAction.timeout, message),
+                size: 16,
+              ),
+              const Text('Timeout user'),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: _MessageAction.mute,
+          child: Row(
+            spacing: 8,
+            children: [
+              Icon(_messageActionIcon(_MessageAction.mute, message), size: 16),
+              const Text('Mute user'),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: _MessageAction.ban,
+          child: Row(
+            spacing: 8,
+            children: [
+              Icon(_messageActionIcon(_MessageAction.ban, message), size: 16),
+              const Text('Ban user'),
+            ],
+          ),
+        ),
+      ],
+    ];
   }
 
   Widget _buildTypingIndicator({
@@ -1446,6 +1760,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
     required bool isExpired,
     required String selectedThreadId,
     required String myId,
+    required List<ChatThread> threads,
     required List<UserProfile> profiles,
     required List<Role> roles,
     required bool canMentionEveryone,
@@ -1453,6 +1768,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
     Widget? leading,
     required void Function(String text) onSend,
   }) {
+    final hasSuggestions = _composerSuggestions.isNotEmpty;
     final modeBanner = _editingMessageId != null || _replyToMessageId != null
         ? Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -1496,6 +1812,48 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
         child: Focus(
           onKeyEvent: (_, event) {
             if (event is! KeyDownEvent) return KeyEventResult.ignored;
+            if (hasSuggestions) {
+              if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                setState(() {
+                  _composerSuggestionIndex =
+                      (_composerSuggestionIndex + 1) %
+                      _composerSuggestions.length;
+                });
+                return KeyEventResult.handled;
+              }
+              if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                setState(() {
+                  _composerSuggestionIndex =
+                      (_composerSuggestionIndex - 1) %
+                      _composerSuggestions.length;
+                  if (_composerSuggestionIndex < 0) {
+                    _composerSuggestionIndex += _composerSuggestions.length;
+                  }
+                });
+                return KeyEventResult.handled;
+              }
+              if (event.logicalKey == LogicalKeyboardKey.tab ||
+                  event.logicalKey == LogicalKeyboardKey.enter ||
+                  event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+                final targetIndex = _composerSuggestionIndex
+                    .clamp(0, _composerSuggestions.length - 1)
+                    .toInt();
+                _applyComposerSuggestion(
+                  suggestion: _composerSuggestions[targetIndex],
+                  threadId: selectedThreadId,
+                  userId: myId,
+                  profiles: profiles,
+                  roles: roles,
+                  threads: threads,
+                  canMentionEveryone: canMentionEveryone,
+                );
+                return KeyEventResult.handled;
+              }
+              if (event.logicalKey == LogicalKeyboardKey.escape) {
+                setState(_clearComposerSuggestions);
+                return KeyEventResult.handled;
+              }
+            }
             if (event.logicalKey == LogicalKeyboardKey.escape) {
               _clearComposerMode();
               return KeyEventResult.handled;
@@ -1530,31 +1888,144 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
             }
             return KeyEventResult.ignored;
           },
-          child: TextField(
-            focusNode: _composerFocusNode,
-            controller: _controller,
-            enabled: canSend,
-            style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
-            decoration: InputDecoration(
-              hintText: isExpired
-                  ? 'This channel has expired'
-                  : _editingMessageId != null
-                  ? 'Edit message...'
-                  : (canSend ? 'Type a message...' : 'Read-only'),
-              hintStyle: TextStyle(color: Theme.of(context).hintColor),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 12,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              TextField(
+                focusNode: _composerFocusNode,
+                controller: _controller,
+                enabled: canSend,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+                decoration: InputDecoration(
+                  hintText: isExpired
+                      ? 'This channel has expired'
+                      : _editingMessageId != null
+                      ? 'Edit message...'
+                      : (canSend ? 'Type a message...' : 'Read-only'),
+                  hintStyle: TextStyle(color: Theme.of(context).hintColor),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  border: InputBorder.none,
+                ),
+                onChanged: canSend
+                    ? (_) => _handleComposerChanged(
+                        threadId: selectedThreadId,
+                        userId: myId,
+                        profiles: profiles,
+                        roles: roles,
+                        threads: threads,
+                        canMentionEveryone: canMentionEveryone,
+                      )
+                    : null,
+                onTap: canSend
+                    ? () => _handleComposerChanged(
+                        threadId: selectedThreadId,
+                        userId: myId,
+                        profiles: profiles,
+                        roles: roles,
+                        threads: threads,
+                        canMentionEveryone: canMentionEveryone,
+                      )
+                    : null,
+                onSubmitted: canSend ? (_) => onSend(_controller.text) : null,
               ),
-              border: InputBorder.none,
-            ),
-            onChanged: canSend
-                ? (_) => _handleComposerChanged(
-                    threadId: selectedThreadId,
-                    userId: myId,
-                  )
-                : null,
-            onSubmitted: canSend ? (_) => onSend(_controller.text) : null,
+              if (hasSuggestions)
+                Positioned(
+                  left: 8,
+                  right: 8,
+                  bottom: 46,
+                  child: Material(
+                    color: Theme.of(context).colorScheme.surface,
+                    elevation: 8,
+                    borderRadius: context.appBorderRadius(10),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 220),
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        itemCount: _composerSuggestions.length,
+                        itemBuilder: (context, index) {
+                          final suggestion = _composerSuggestions[index];
+                          final selected = index == _composerSuggestionIndex;
+                          return InkWell(
+                            onTap: () => _applyComposerSuggestion(
+                              suggestion: suggestion,
+                              threadId: selectedThreadId,
+                              userId: myId,
+                              profiles: profiles,
+                              roles: roles,
+                              threads: threads,
+                              canMentionEveryone: canMentionEveryone,
+                            ),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              color: selected
+                                  ? Theme.of(
+                                      context,
+                                    ).colorScheme.primaryContainer
+                                  : Colors.transparent,
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    suggestion.icon,
+                                    size: 16,
+                                    color: selected
+                                        ? Theme.of(
+                                            context,
+                                          ).colorScheme.onPrimaryContainer
+                                        : Theme.of(
+                                            context,
+                                          ).colorScheme.onSurfaceVariant,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      suggestion.label,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: selected
+                                            ? Theme.of(
+                                                context,
+                                              ).colorScheme.onPrimaryContainer
+                                            : Theme.of(
+                                                context,
+                                              ).colorScheme.onSurface,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    suggestion.subtitle,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: selected
+                                          ? Theme.of(
+                                              context,
+                                            ).colorScheme.onPrimaryContainer
+                                          : Theme.of(
+                                              context,
+                                            ).colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
       ),
@@ -1708,29 +2179,57 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
   }
 
   Future<void> _showCreateChannelDialog({required String myId}) async {
+    final groups = ref.read(logicalGroupsProvider);
     final draft = await showDialog<_CreateChannelDraft>(
       context: context,
-      builder: (_) => const _CreateChannelDialog(),
+      builder: (_) => _CreateChannelDialog(groups: groups),
     );
     if (draft == null) return;
-    final visibilityGroupIds = await _pickVisibilityGroups(
-      initialSelection: const [AclGroupIds.everyone],
-    );
-    if (visibilityGroupIds == null) return;
-
     final now = DateTime.now();
-    final thread = ChatThread(
-      id: 'chat:channel:${const Uuid().v4()}',
-      kind: ChatThread.channelKind,
-      name: _normalizeChannelName(draft.name),
-      createdBy: myId,
-      createdAt: now,
-      expiresAt: draft.ttl != null ? now.add(draft.ttl!) : null,
-      visibilityGroupIds: visibilityGroupIds,
+    final repo = ref.read(dashboardRepositoryProvider);
+    final visibilityGroupIds = normalizeVisibilityGroupIds(
+      draft.visibilityGroupIds,
     );
-    await ref.read(dashboardRepositoryProvider).saveChatThread(thread);
+
+    ChatThread? firstCreatedThread;
+    if (draft.createPerAclGroup) {
+      final groupsById = {for (final group in groups) group.id: group};
+      final targetGroupIds = visibilityGroupIds
+          .where((id) => id != AclGroupIds.everyone)
+          .toList();
+
+      for (final groupId in targetGroupIds) {
+        final groupName = groupsById[groupId]?.name ?? groupId;
+        final thread = ChatThread(
+          id: 'chat:channel:${const Uuid().v4()}',
+          kind: ChatThread.channelKind,
+          name: _normalizeChannelName('${draft.name}-${groupName.trim()}'),
+          createdBy: myId,
+          createdAt: now,
+          expiresAt: draft.ttl != null ? now.add(draft.ttl!) : null,
+          visibilityGroupIds: [groupId],
+        );
+        await repo.saveChatThread(thread);
+        firstCreatedThread ??= thread;
+      }
+    } else {
+      final thread = ChatThread(
+        id: 'chat:channel:${const Uuid().v4()}',
+        kind: ChatThread.channelKind,
+        name: _normalizeChannelName(draft.name),
+        createdBy: myId,
+        createdAt: now,
+        expiresAt: draft.ttl != null ? now.add(draft.ttl!) : null,
+        visibilityGroupIds: visibilityGroupIds,
+      );
+      await repo.saveChatThread(thread);
+      firstCreatedThread = thread;
+    }
+
+    if (firstCreatedThread == null) return;
+    final createdThreadId = firstCreatedThread.id;
     if (!mounted) return;
-    setState(() => _selectedThreadId = thread.id);
+    setState(() => _selectedThreadId = createdThreadId);
   }
 
   Future<void> _showEditChannelDialog(ChatThread thread) async {
@@ -1946,6 +2445,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
         setState(() => _presenceState = slash.presenceState!);
         await repo.touchPresence(userId: myId, state: slash.presenceState!);
         _controller.clear();
+        if (mounted) setState(_clearComposerSuggestions);
         return;
       }
       if (slash.moderationAction != null) {
@@ -1968,6 +2468,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
           reason: slash.moderationReason,
         );
         _controller.clear();
+        if (mounted) setState(_clearComposerSuggestions);
         return;
       }
       if (slash.threadName != null) {
@@ -2059,6 +2560,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
     setState(() {
       _replyToMessageId = null;
       _editingMessageId = null;
+      _clearComposerSuggestions();
     });
   }
 
@@ -2082,8 +2584,18 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
   void _handleComposerChanged({
     required String threadId,
     required String userId,
+    required List<UserProfile> profiles,
+    required List<Role> roles,
+    required List<ChatThread> threads,
+    required bool canMentionEveryone,
   }) {
     if (threadId.isEmpty || userId.isEmpty) return;
+    _updateComposerSuggestions(
+      profiles: profiles,
+      roles: roles,
+      threads: threads,
+      canMentionEveryone: canMentionEveryone,
+    );
     _typingTimer?.cancel();
     unawaited(
       ref
@@ -2101,6 +2613,246 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
             .touchTyping(threadId: threadId, userId: userId, isTyping: false),
       );
     });
+  }
+
+  void _updateComposerSuggestions({
+    required List<UserProfile> profiles,
+    required List<Role> roles,
+    required List<ChatThread> threads,
+    required bool canMentionEveryone,
+  }) {
+    void clearIfNeeded() {
+      if (_composerSuggestionStart == null && _composerSuggestions.isEmpty) {
+        return;
+      }
+      setState(_clearComposerSuggestions);
+    }
+
+    final selection = _controller.selection;
+    final text = _controller.text;
+    final caret = selection.baseOffset;
+    if (caret < 0 || caret > text.length) {
+      clearIfNeeded();
+      return;
+    }
+
+    final beforeCaret = text.substring(0, caret);
+    final tokenPattern = RegExp(r'(^|\s)([@#])([A-Za-z0-9_.\-]*)$');
+    final match = tokenPattern.firstMatch(beforeCaret);
+    if (match == null) {
+      clearIfNeeded();
+      return;
+    }
+    final trigger = match.group(2);
+    if (trigger == null) {
+      clearIfNeeded();
+      return;
+    }
+    final query = (match.group(3) ?? '').toLowerCase();
+    final tokenStart = match.end - query.length - 1;
+
+    var nextSuggestions = <_ComposerSuggestion>[];
+    if (trigger == '@') {
+      nextSuggestions = _buildMentionSuggestions(
+        query: query,
+        profiles: profiles,
+        roles: roles,
+        canMentionEveryone: canMentionEveryone,
+      );
+    } else if (trigger == '#') {
+      nextSuggestions = _buildThreadMentionSuggestions(
+        query: query,
+        threads: threads,
+      );
+    }
+
+    if (nextSuggestions.isEmpty) {
+      clearIfNeeded();
+      return;
+    }
+    setState(() {
+      _composerSuggestionStart = tokenStart;
+      _composerSuggestions = nextSuggestions;
+      if (_composerSuggestionIndex >= _composerSuggestions.length) {
+        _composerSuggestionIndex = 0;
+      }
+    });
+  }
+
+  List<_ComposerSuggestion> _buildMentionSuggestions({
+    required String query,
+    required List<UserProfile> profiles,
+    required List<Role> roles,
+    required bool canMentionEveryone,
+  }) {
+    final normalizedQuery = query.trim().toLowerCase();
+    final suggestions = <_ComposerSuggestion>[];
+
+    bool matches(String value) {
+      if (normalizedQuery.isEmpty) return true;
+      return value.toLowerCase().contains(normalizedQuery);
+    }
+
+    if (canMentionEveryone) {
+      if (matches('everyone')) {
+        suggestions.add(
+          const _ComposerSuggestion(
+            kind: _ComposerSuggestionKind.mention,
+            id: 'everyone',
+            label: '@everyone',
+            insertText: '@everyone',
+            subtitle: 'All members',
+            icon: Icons.groups_2_outlined,
+          ),
+        );
+      }
+      if (matches('here')) {
+        suggestions.add(
+          const _ComposerSuggestion(
+            kind: _ComposerSuggestionKind.mention,
+            id: 'here',
+            label: '@here',
+            insertText: '@here',
+            subtitle: 'Online members',
+            icon: Icons.alternate_email,
+          ),
+        );
+      }
+    }
+
+    final sortedRoles = [...roles]
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    for (final role in sortedRoles) {
+      if (!matches(role.name)) continue;
+      final handle = _normalizeMentionHandle(role.name);
+      suggestions.add(
+        _ComposerSuggestion(
+          kind: _ComposerSuggestionKind.mention,
+          id: 'role:${role.id}',
+          label: '@${role.name}',
+          insertText: '@$handle',
+          subtitle: 'Role',
+          icon: Icons.shield_outlined,
+        ),
+      );
+      if (suggestions.length >= 12) break;
+    }
+
+    final sortedUsers = [...profiles]
+      ..sort(
+        (a, b) =>
+            a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()),
+      );
+    for (final user in sortedUsers) {
+      if (!matches(user.displayName)) continue;
+      final handle = _normalizeMentionHandle(user.displayName);
+      suggestions.add(
+        _ComposerSuggestion(
+          kind: _ComposerSuggestionKind.mention,
+          id: 'user:${user.id}',
+          label: '@${user.displayName}',
+          insertText: '@$handle',
+          subtitle: 'Member',
+          icon: Icons.person_outline,
+        ),
+      );
+      if (suggestions.length >= 12) break;
+    }
+
+    return suggestions.take(8).toList();
+  }
+
+  List<_ComposerSuggestion> _buildThreadMentionSuggestions({
+    required String query,
+    required List<ChatThread> threads,
+  }) {
+    final normalizedQuery = query.trim().toLowerCase();
+    final candidates =
+        threads
+            .where((thread) => !thread.isDm)
+            .map((thread) {
+              final normalizedName = _normalizeChannelName(thread.name);
+              return (thread: thread, normalizedName: normalizedName);
+            })
+            .where((entry) {
+              if (normalizedQuery.isEmpty) return true;
+              return entry.normalizedName.toLowerCase().contains(
+                normalizedQuery,
+              );
+            })
+            .toList()
+          ..sort((a, b) {
+            final aName = a.normalizedName.toLowerCase();
+            final bName = b.normalizedName.toLowerCase();
+            final aStarts = aName.startsWith(normalizedQuery);
+            final bStarts = bName.startsWith(normalizedQuery);
+            if (aStarts != bStarts) {
+              return aStarts ? -1 : 1;
+            }
+            return aName.compareTo(bName);
+          });
+
+    return candidates.take(8).map((entry) {
+      final thread = entry.thread;
+      final normalizedName = entry.normalizedName;
+      return _ComposerSuggestion(
+        kind: _ComposerSuggestionKind.thread,
+        id: 'thread:${thread.id}',
+        label: '#$normalizedName',
+        insertText: '#$normalizedName',
+        subtitle: thread.isSubthread ? 'Thread' : 'Channel',
+        icon: thread.isSubthread ? Icons.forum_outlined : Icons.tag,
+      );
+    }).toList();
+  }
+
+  String _normalizeMentionHandle(String input) {
+    final trimmed = input.trim().toLowerCase();
+    if (trimmed.isEmpty) return '';
+    return trimmed.replaceAll(RegExp(r'\s+'), '.');
+  }
+
+  void _applyComposerSuggestion({
+    required _ComposerSuggestion suggestion,
+    required String threadId,
+    required String userId,
+    required List<UserProfile> profiles,
+    required List<Role> roles,
+    required List<ChatThread> threads,
+    required bool canMentionEveryone,
+  }) {
+    final selection = _controller.selection;
+    final end = selection.baseOffset;
+    final start = _composerSuggestionStart;
+    if (start == null ||
+        start < 0 ||
+        end < start ||
+        end > _controller.text.length) {
+      return;
+    }
+    final replacement = '${suggestion.insertText} ';
+    final updated = _controller.text.replaceRange(start, end, replacement);
+    final offset = start + replacement.length;
+    _controller.value = _controller.value.copyWith(
+      text: updated,
+      selection: TextSelection.collapsed(offset: offset),
+      composing: TextRange.empty,
+    );
+    _composerFocusNode.requestFocus();
+    _handleComposerChanged(
+      threadId: threadId,
+      userId: userId,
+      profiles: profiles,
+      roles: roles,
+      threads: threads,
+      canMentionEveryone: canMentionEveryone,
+    );
+  }
+
+  void _clearComposerSuggestions() {
+    _composerSuggestionStart = null;
+    _composerSuggestions = const [];
+    _composerSuggestionIndex = 0;
   }
 
   Future<void> _runSlashModeration({
@@ -2784,12 +3536,21 @@ class _ThreadNameDialogState extends State<_ThreadNameDialog> {
 class _CreateChannelDraft {
   final String name;
   final Duration? ttl;
+  final List<String> visibilityGroupIds;
+  final bool createPerAclGroup;
 
-  const _CreateChannelDraft({required this.name, required this.ttl});
+  const _CreateChannelDraft({
+    required this.name,
+    required this.ttl,
+    required this.visibilityGroupIds,
+    required this.createPerAclGroup,
+  });
 }
 
 class _CreateChannelDialog extends StatefulWidget {
-  const _CreateChannelDialog();
+  final List<LogicalGroup> groups;
+
+  const _CreateChannelDialog({required this.groups});
 
   @override
   State<_CreateChannelDialog> createState() => _CreateChannelDialogState();
@@ -2798,6 +3559,8 @@ class _CreateChannelDialog extends StatefulWidget {
 class _CreateChannelDialogState extends State<_CreateChannelDialog> {
   final _nameController = TextEditingController();
   Duration? _selectedTtl;
+  List<String> _visibilityGroupIds = const [AclGroupIds.everyone];
+  bool _createPerAclGroup = false;
 
   static const _ttlOptions = <({String label, Duration? ttl})>[
     (label: 'No expiry', ttl: null),
@@ -2816,6 +3579,9 @@ class _CreateChannelDialogState extends State<_CreateChannelDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final hasSpecificAclSelection = _visibilityGroupIds.any(
+      (id) => id != AclGroupIds.everyone,
+    );
     return AlertDialog(
       title: const Text('Create Channel'),
       content: Column(
@@ -2847,6 +3613,46 @@ class _CreateChannelDialogState extends State<_CreateChannelDialog> {
                 .toList(),
             onChanged: (value) => setState(() => _selectedTtl = value),
           ),
+          const SizedBox(height: 12),
+          ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Visibility'),
+            subtitle: Text(
+              visibilitySelectionSummary(
+                selectedGroupIds: _visibilityGroupIds,
+                allGroups: widget.groups,
+              ),
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () async {
+              final picked = await showVisibilityGroupSelectorDialog(
+                context: context,
+                groups: widget.groups,
+                initialSelection: _visibilityGroupIds,
+              );
+              if (picked == null) return;
+              setState(() {
+                _visibilityGroupIds = normalizeVisibilityGroupIds(picked);
+                if (!_visibilityGroupIds.any(
+                  (id) => id != AclGroupIds.everyone,
+                )) {
+                  _createPerAclGroup = false;
+                }
+              });
+            },
+          ),
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Create ACL rooms'),
+            subtitle: const Text(
+              'Create one room per selected ACL group (excludes Everyone).',
+            ),
+            value: _createPerAclGroup,
+            onChanged: hasSpecificAclSelection
+                ? (value) => setState(() => _createPerAclGroup = value)
+                : null,
+          ),
         ],
       ),
       actions: [
@@ -2860,7 +3666,12 @@ class _CreateChannelDialogState extends State<_CreateChannelDialog> {
             if (name.isEmpty) return;
             Navigator.pop(
               context,
-              _CreateChannelDraft(name: name, ttl: _selectedTtl),
+              _CreateChannelDraft(
+                name: name,
+                ttl: _selectedTtl,
+                visibilityGroupIds: _visibilityGroupIds,
+                createPerAclGroup: _createPerAclGroup,
+              ),
             );
           },
           child: const Text('Create'),

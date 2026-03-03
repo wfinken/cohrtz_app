@@ -5,8 +5,11 @@ import 'package:cohortz/slices/notifications/activity_notification_orchestrator.
 import 'package:cohortz/slices/dashboard_shell/models/dashboard_models.dart';
 import 'package:cohortz/slices/dashboard_shell/models/system_model.dart';
 import 'package:cohortz/slices/dashboard_shell/models/user_model.dart';
+import 'package:cohortz/slices/permissions_feature/models/member_model.dart';
+import 'package:cohortz/slices/permissions_feature/state/member_repository.dart';
 
 import 'notification_provider.dart';
+import 'crdt_provider.dart';
 import 'sync_service_provider.dart';
 import 'widget_notification_preferences_provider.dart';
 
@@ -26,6 +29,7 @@ void _bootstrapActivityNotifications(Ref ref) {
   StreamSubscription<List<ChatThread>>? chatThreadSubscription;
   StreamSubscription<List<PollItem>>? pollSubscription;
   StreamSubscription<List<UserProfile>>? userSubscription;
+  StreamSubscription<List<GroupMember>>? memberSubscription;
   Timer? pollExpiryTimer;
 
   String? activeRoomName;
@@ -49,6 +53,7 @@ void _bootstrapActivityNotifications(Ref ref) {
   final Set<String> pollRestartInFlight = {};
   Set<String> knownUserIds = {};
   Map<String, String> knownUserDisplayNames = {};
+  Map<String, Set<String>> knownRoleIdsByUser = {};
   GroupNotificationSettings notificationSettings =
       const GroupNotificationSettings();
 
@@ -65,7 +70,10 @@ void _bootstrapActivityNotifications(Ref ref) {
       'tasks(new=${notificationSettings.newTasks}, done=${notificationSettings.completedTasks}) '
       'calendar=${notificationSettings.calendarEvents} '
       'vault=${notificationSettings.vaultItems} '
-      'chat=${notificationSettings.chatMessages} '
+      'chat(all=${notificationSettings.chatMessages}, '
+      '@you=${notificationSettings.chatDirectMentions}, '
+      '@role=${notificationSettings.chatRoleMentions}, '
+      '@all=${notificationSettings.chatEveryoneMentions}) '
       'polls(new=${notificationSettings.newPolls}, closed=${notificationSettings.closedPolls}, votes=${notificationSettings.pollVotes}) '
       'members(join=${notificationSettings.memberJoined}, left=${notificationSettings.memberLeft})',
     );
@@ -587,6 +595,12 @@ void _bootstrapActivityNotifications(Ref ref) {
     knownUserDisplayNames = nextNames;
   }
 
+  Future<void> handleMemberUpdate(List<GroupMember> members) async {
+    knownRoleIdsByUser = {
+      for (final member in members) member.id: member.roleIds.toSet(),
+    };
+  }
+
   String previewMessage(String message) {
     final trimmed = message.trim();
     if (trimmed.isEmpty) return 'New message';
@@ -660,13 +674,19 @@ void _bootstrapActivityNotifications(Ref ref) {
       );
     }
 
-    if (notificationSettings.allNotifications &&
-        notificationSettings.chatMessages) {
+    final canNotifyChat =
+        notificationSettings.allNotifications &&
+        (notificationSettings.chatMessages ||
+            notificationSettings.chatDirectMentions ||
+            notificationSettings.chatRoleMentions ||
+            notificationSettings.chatEveryoneMentions);
+    if (canNotifyChat) {
       final widgetEnabled = addedList.isNotEmpty
           ? await widgetPrefs.isEnabled(groupId: room, widgetType: 'chat')
           : true;
       if (!widgetEnabled) return;
 
+      final localRoleIds = knownRoleIdsByUser[localUserId] ?? const <String>{};
       for (final message in addedList) {
         if (message.senderId == localUserId) {
           log(
@@ -674,10 +694,22 @@ void _bootstrapActivityNotifications(Ref ref) {
           );
           continue;
         }
+        final hasDirectMention =
+            localUserId.isNotEmpty &&
+            message.mentionUserIds.contains(localUserId);
+        final hasRoleMention =
+            localRoleIds.isNotEmpty &&
+            message.mentionRoleIds.any(localRoleIds.contains);
+        final hasEveryoneMention = message.mentionsEveryone;
         final isMention =
-            message.mentionsEveryone ||
-            (localUserId.isNotEmpty &&
-                message.mentionUserIds.contains(localUserId));
+            hasDirectMention || hasRoleMention || hasEveryoneMention;
+        final mentionEnabled =
+            (hasDirectMention && notificationSettings.chatDirectMentions) ||
+            (hasRoleMention && notificationSettings.chatRoleMentions) ||
+            (hasEveryoneMention && notificationSettings.chatEveryoneMentions);
+        final shouldNotify =
+            notificationSettings.chatMessages || mentionEnabled;
+        if (!shouldNotify) continue;
         final senderName = knownUserDisplayNames[message.senderId];
         unawaited(
           notificationService.showNewChatMessage(
@@ -704,6 +736,7 @@ void _bootstrapActivityNotifications(Ref ref) {
     await chatThreadSubscription?.cancel();
     await pollSubscription?.cancel();
     await userSubscription?.cancel();
+    await memberSubscription?.cancel();
     pollExpiryTimer?.cancel();
     taskSubscription = null;
     eventSubscription = null;
@@ -712,6 +745,7 @@ void _bootstrapActivityNotifications(Ref ref) {
     chatThreadSubscription = null;
     pollSubscription = null;
     userSubscription = null;
+    memberSubscription = null;
     pollExpiryTimer = null;
   }
 
@@ -734,6 +768,7 @@ void _bootstrapActivityNotifications(Ref ref) {
     knownPollStateById = {};
     knownUserIds = {};
     knownUserDisplayNames = {};
+    knownRoleIdsByUser = {};
   }
 
   Future<void> rebindForRepository(DashboardRepository repository) async {
@@ -768,6 +803,13 @@ void _bootstrapActivityNotifications(Ref ref) {
     );
     userSubscription = repository.watchUserProfiles().listen(
       (profiles) => unawaited(handleUserUpdate(profiles)),
+    );
+    final memberRepo = MemberRepository(
+      ref.read(crdtServiceProvider),
+      activeRoomName,
+    );
+    memberSubscription = memberRepo.watchMembers().listen(
+      (members) => unawaited(handleMemberUpdate(members)),
     );
     startPollExpiryTimer();
     log('subscriptions attached for room "${roomDisplayName()}".');

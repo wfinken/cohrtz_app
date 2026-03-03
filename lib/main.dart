@@ -11,6 +11,8 @@ void main() async {
 }
 
 void _configureGlobalErrorHandling() {
+  final webDisposeAssertionTracker = _SuppressedWebDisposeAssertionTracker();
+
   bool isDisposedViewAssertion(Object error) {
     if (!kIsWeb) return false;
     final message = error.toString();
@@ -20,9 +22,10 @@ void _configureGlobalErrorHandling() {
   final previousFlutterOnError = FlutterError.onError;
   FlutterError.onError = (details) {
     if (isDisposedViewAssertion(details.exception)) {
-      debugPrint(
-        '[Main] Suppressed benign web dispose assertion: ${details.exception}',
-      );
+      final logMessage = webDisposeAssertionTracker.record(details.exception);
+      if (logMessage != null) {
+        debugPrint(logMessage);
+      }
       return;
     }
     if (previousFlutterOnError != null) {
@@ -35,7 +38,10 @@ void _configureGlobalErrorHandling() {
   final previousPlatformOnError = PlatformDispatcher.instance.onError;
   PlatformDispatcher.instance.onError = (error, stack) {
     if (isDisposedViewAssertion(error)) {
-      debugPrint('[Main] Suppressed benign web dispose assertion: $error');
+      final logMessage = webDisposeAssertionTracker.record(error);
+      if (logMessage != null) {
+        debugPrint(logMessage);
+      }
       return true;
     }
     if (previousPlatformOnError != null) {
@@ -43,4 +49,28 @@ void _configureGlobalErrorHandling() {
     }
     return false;
   };
+}
+
+class _SuppressedWebDisposeAssertionTracker {
+  int _count = 0;
+  DateTime? _lastLogAt;
+
+  String? record(Object error) {
+    _count += 1;
+
+    final now = DateTime.now();
+    final shouldLog =
+        _count == 1 ||
+        _count % 25 == 0 ||
+        _lastLogAt == null ||
+        now.difference(_lastLogAt!) > const Duration(seconds: 30);
+
+    if (!shouldLog) {
+      return null;
+    }
+
+    _lastLogAt = now;
+    return '[Main] Suppressed benign web dispose assertion '
+        '(count=$_count): ${error.toString().split('\n').first}';
+  }
 }
