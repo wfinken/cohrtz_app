@@ -6,6 +6,7 @@ import 'package:cohortz/slices/dashboard_shell/models/dashboard_models.dart';
 import 'package:cohortz/slices/dashboard_shell/models/system_model.dart';
 import 'package:cohortz/slices/dashboard_shell/models/user_model.dart';
 import 'package:cohortz/slices/permissions_feature/models/member_model.dart';
+import 'package:cohortz/slices/permissions_feature/state/logical_group_providers.dart';
 import 'package:cohortz/slices/permissions_feature/state/member_repository.dart';
 
 import 'notification_provider.dart';
@@ -73,6 +74,7 @@ void _bootstrapActivityNotifications(Ref ref) {
       'chat(all=${notificationSettings.chatMessages}, '
       '@you=${notificationSettings.chatDirectMentions}, '
       '@role=${notificationSettings.chatRoleMentions}, '
+      '@group=${notificationSettings.chatAclGroupMentions}, '
       '@all=${notificationSettings.chatEveryoneMentions}) '
       'polls(new=${notificationSettings.newPolls}, closed=${notificationSettings.closedPolls}, votes=${notificationSettings.pollVotes}) '
       'members(join=${notificationSettings.memberJoined}, left=${notificationSettings.memberLeft})',
@@ -679,6 +681,7 @@ void _bootstrapActivityNotifications(Ref ref) {
         (notificationSettings.chatMessages ||
             notificationSettings.chatDirectMentions ||
             notificationSettings.chatRoleMentions ||
+            notificationSettings.chatAclGroupMentions ||
             notificationSettings.chatEveryoneMentions);
     if (canNotifyChat) {
       final widgetEnabled = addedList.isNotEmpty
@@ -687,6 +690,7 @@ void _bootstrapActivityNotifications(Ref ref) {
       if (!widgetEnabled) return;
 
       final localRoleIds = knownRoleIdsByUser[localUserId] ?? const <String>{};
+      final localAclGroupIds = ref.read(myLogicalGroupIdsProvider);
       for (final message in addedList) {
         if (message.senderId == localUserId) {
           log(
@@ -700,16 +704,26 @@ void _bootstrapActivityNotifications(Ref ref) {
         final hasRoleMention =
             localRoleIds.isNotEmpty &&
             message.mentionRoleIds.any(localRoleIds.contains);
+        final hasAclGroupMention =
+            localAclGroupIds.isNotEmpty &&
+            message.mentionAclGroupIds.any(localAclGroupIds.contains);
         final hasEveryoneMention = message.mentionsEveryone;
-        final isMention =
-            hasDirectMention || hasRoleMention || hasEveryoneMention;
         final mentionEnabled =
             (hasDirectMention && notificationSettings.chatDirectMentions) ||
             (hasRoleMention && notificationSettings.chatRoleMentions) ||
+            (hasAclGroupMention && notificationSettings.chatAclGroupMentions) ||
             (hasEveryoneMention && notificationSettings.chatEveryoneMentions);
         final shouldNotify =
             notificationSettings.chatMessages || mentionEnabled;
         if (!shouldNotify) continue;
+        final mentionTags = <String>[];
+        if (hasDirectMention) mentionTags.add('@you');
+        if (hasRoleMention) mentionTags.add('@role');
+        if (hasAclGroupMention) mentionTags.add('@group');
+        if (hasEveryoneMention) mentionTags.add('@everyone');
+        final mentionPrefix = mentionTags.isEmpty
+            ? ''
+            : '[${mentionTags.join(', ')}] ';
         final senderName = knownUserDisplayNames[message.senderId];
         unawaited(
           notificationService.showNewChatMessage(
@@ -718,9 +732,7 @@ void _bootstrapActivityNotifications(Ref ref) {
             senderName: senderName == null || senderName.isEmpty
                 ? 'Member'
                 : senderName.trim(),
-            messagePreview: isMention
-                ? '[mention] ${previewMessage(message.content)}'
-                : previewMessage(message.content),
+            messagePreview: '$mentionPrefix${previewMessage(message.content)}',
           ),
         );
       }

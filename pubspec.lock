@@ -433,9 +433,11 @@ packages:
   flutter_dashboard_grid:
     dependency: "direct main"
     description:
-      path: "../flutter_dashboard_grid"
-      relative: true
-    source: path
+      path: "."
+      ref: HEAD
+      resolved-ref: "142ecc2199d40c2eed0829236d6213f45afa3564"
+      url: "https://github.com/wfinken/flutter_dashboard_grid"
+    source: git
     version: "0.1.0"
   flutter_driver:
     dependency: transitive

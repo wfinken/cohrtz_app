@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:cohortz/slices/chat/state/chat_mention_parser.dart';
 import 'package:cohortz/slices/dashboard_shell/models/user_model.dart';
+import 'package:cohortz/slices/permissions_feature/models/logical_group_model.dart';
 import 'package:cohortz/slices/permissions_feature/models/role_model.dart';
 
 void main() {
@@ -20,6 +21,9 @@ void main() {
         position: 1,
         permissions: 0,
       ),
+    ];
+    final aclGroups = <LogicalGroup>[
+      LogicalGroup(id: 'lg1', name: 'Parents', memberIds: const ['u1']),
     ];
 
     test('extracts user and role mentions', () {
@@ -50,6 +54,17 @@ void main() {
         canMentionEveryone: true,
       );
       expect(allowed.mentionsEveryone, isTrue);
+    });
+
+    test('extracts ACL group mentions', () {
+      final result = parser.parse(
+        content: 'hello @parents',
+        users: users,
+        roles: roles,
+        aclGroups: aclGroups,
+        canMentionEveryone: false,
+      );
+      expect(result.aclGroupIds, contains('lg1'));
     });
   });
 }

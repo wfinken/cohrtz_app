@@ -22,6 +22,7 @@ class ChatMessage with ChatMessageMappable {
   final String? pinnedBy;
   final List<String> mentionUserIds;
   final List<String> mentionRoleIds;
+  final List<String> mentionAclGroupIds;
   final bool mentionsEveryone;
   final Map<String, List<String>> reactions;
 
@@ -41,6 +42,7 @@ class ChatMessage with ChatMessageMappable {
     this.pinnedBy,
     this.mentionUserIds = const [],
     this.mentionRoleIds = const [],
+    this.mentionAclGroupIds = const [],
     this.mentionsEveryone = false,
     this.reactions = const <String, List<String>>{},
   });

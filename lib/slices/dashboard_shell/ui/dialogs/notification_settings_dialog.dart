@@ -123,6 +123,7 @@ class _NotificationSettingsDialogState
         settings.chatMessages &&
         settings.chatDirectMentions &&
         settings.chatRoleMentions &&
+        settings.chatAclGroupMentions &&
         settings.chatEveryoneMentions &&
         settings.newPolls &&
         settings.closedPolls &&
@@ -402,6 +403,21 @@ class _NotificationSettingsDialogState
               onChanged: (value) async {
                 final next = _syncAllFlag(
                   _notificationSettings.copyWith(chatRoleMentions: value),
+                );
+                setState(() {
+                  _notificationSettings = next;
+                });
+                await _saveNotificationSettings(repo, settings, userKey, next);
+              },
+            ),
+            _buildNotificationToggle(
+              context,
+              title: '@ACL Group Mentions',
+              subtitle: 'Notify when a group you belong to is mentioned.',
+              value: _notificationSettings.chatAclGroupMentions,
+              onChanged: (value) async {
+                final next = _syncAllFlag(
+                  _notificationSettings.copyWith(chatAclGroupMentions: value),
                 );
                 setState(() {
                   _notificationSettings = next;
