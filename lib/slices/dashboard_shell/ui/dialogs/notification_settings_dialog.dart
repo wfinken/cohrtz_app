@@ -121,6 +121,9 @@ class _NotificationSettingsDialogState
         settings.calendarEvents &&
         settings.vaultItems &&
         settings.chatMessages &&
+        settings.chatDirectMentions &&
+        settings.chatRoleMentions &&
+        settings.chatEveryoneMentions &&
         settings.newPolls &&
         settings.closedPolls &&
         settings.pollVotes &&
@@ -369,6 +372,51 @@ class _NotificationSettingsDialogState
               onChanged: (value) async {
                 final next = _syncAllFlag(
                   _notificationSettings.copyWith(chatMessages: value),
+                );
+                setState(() {
+                  _notificationSettings = next;
+                });
+                await _saveNotificationSettings(repo, settings, userKey, next);
+              },
+            ),
+            _buildNotificationToggle(
+              context,
+              title: '@You Mentions',
+              subtitle: 'Notify when someone mentions you directly.',
+              value: _notificationSettings.chatDirectMentions,
+              onChanged: (value) async {
+                final next = _syncAllFlag(
+                  _notificationSettings.copyWith(chatDirectMentions: value),
+                );
+                setState(() {
+                  _notificationSettings = next;
+                });
+                await _saveNotificationSettings(repo, settings, userKey, next);
+              },
+            ),
+            _buildNotificationToggle(
+              context,
+              title: '@Role Mentions',
+              subtitle: 'Notify when your roles are mentioned.',
+              value: _notificationSettings.chatRoleMentions,
+              onChanged: (value) async {
+                final next = _syncAllFlag(
+                  _notificationSettings.copyWith(chatRoleMentions: value),
+                );
+                setState(() {
+                  _notificationSettings = next;
+                });
+                await _saveNotificationSettings(repo, settings, userKey, next);
+              },
+            ),
+            _buildNotificationToggle(
+              context,
+              title: '@everyone / @here',
+              subtitle: 'Notify when broadcast mentions are used.',
+              value: _notificationSettings.chatEveryoneMentions,
+              onChanged: (value) async {
+                final next = _syncAllFlag(
+                  _notificationSettings.copyWith(chatEveryoneMentions: value),
                 );
                 setState(() {
                   _notificationSettings = next;

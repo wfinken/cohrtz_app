@@ -20,6 +20,8 @@ import 'group_identity_provider.dart';
 import 'identity_provider.dart';
 
 final packetHandlerProvider = Provider<PacketHandler>((ref) {
+  final lastSyncOnKeyUpdate = <String, DateTime>{};
+
   return PacketHandler(
     hybridTimeService: ref.watch(hybridTimeServiceProvider),
     securityService: ref.watch(securityServiceProvider),
@@ -48,7 +50,13 @@ final packetHandlerProvider = Provider<PacketHandler>((ref) {
       final isInviteRoom = group['isInviteRoom'] == 'true';
       if (!isInviteRoom &&
           ref.read(connectionManagerProvider).isConnected(room)) {
-        ref.read(syncProtocolProvider).requestSync(room);
+        final now = DateTime.now();
+        final last = lastSyncOnKeyUpdate[room];
+        if (last == null ||
+            now.difference(last) >= const Duration(seconds: 30)) {
+          lastSyncOnKeyUpdate[room] = now;
+          ref.read(syncProtocolProvider).requestSync(room);
+        }
       }
     },
     onPeerHandshake: (room, peerId) {

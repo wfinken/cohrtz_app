@@ -43,9 +43,8 @@ class SyncProtocol {
     'group_settings',
     'roles',
     'members',
+    'logical_groups',
     'user_profiles',
-    'dashboard_widgets',
-    'avatar_blobs',
   };
 
   SyncProtocol({
@@ -169,7 +168,11 @@ class SyncProtocol {
       final changeset = remoteVc != null
           ? await _crdtService.getChangesetFromVector(roomName, remoteVc)
           : await _crdtService.getChangeset(roomName);
-      await _mergeAlwaysIncludedTables(roomName, changeset);
+      await _mergeAlwaysIncludedTables(
+        roomName,
+        changeset,
+        includeAll: remoteVc == null || remoteVc.isEmpty,
+      );
 
       Log.d('SyncProtocol', 'Changeset contains ${changeset.length} tables.');
 
@@ -361,8 +364,10 @@ class SyncProtocol {
 
   Future<void> _mergeAlwaysIncludedTables(
     String roomName,
-    Map<String, List<CrdtRecord>> changeset,
-  ) async {
+    Map<String, List<CrdtRecord>> changeset, {
+    required bool includeAll,
+  }) async {
+    if (!includeAll) return;
     final fullChangeset = await _crdtService.getChangeset(roomName);
     for (final table in _alwaysIncludeSyncTables) {
       final records = fullChangeset[table];

@@ -57,6 +57,16 @@ class PacketHandler {
 
   // Buffer for GSK-encrypted packets
   final Map<String, List<(P2PPacket, List<int>)>> _packetsAwaitingGsk = {};
+  final Map<String, Set<String>> _bufferedGskPacketIds = {};
+  final Map<String, DateTime> _lastGskRecoveryAttempt = {};
+
+  // TreeKEM onboarding guards to avoid duplicate/member-add races.
+  final Set<String> _onboardingInFlight = {};
+  final Map<String, Map<String, DateTime>> _recentOnboardedByRoom = {};
+
+  static const int _maxBufferedGskPacketsPerRoom = 256;
+  static const Duration _gskRecoveryCooldown = Duration(milliseconds: 1200);
+  static const Duration _onboardingDuplicateCooldown = Duration(seconds: 60);
   final Map<String, DateTime> _lastProfileBroadcast = {};
   late final Map<P2PPacket_PacketType, PacketControlHandler>
   _packetControlHandlers;
@@ -280,10 +290,33 @@ class PacketHandler {
       return;
     }
 
-    // Check if member already exists to avoid re-adding
+    // Check if member already exists to avoid re-adding.
     if (_treekemHandler.memberExists(roomName, treeKemKey)) {
       return;
     }
+
+    final keyFingerprint = base64Encode(treeKemKey);
+    final onboardingToken = '$roomName|$keyFingerprint';
+    if (_onboardingInFlight.contains(onboardingToken)) {
+      return;
+    }
+
+    final recentRoomMap = _recentOnboardedByRoom.putIfAbsent(
+      roomName,
+      () => <String, DateTime>{},
+    );
+    final lastOnboardedAt = recentRoomMap[keyFingerprint];
+    if (lastOnboardedAt != null &&
+        DateTime.now().difference(lastOnboardedAt) <
+            _onboardingDuplicateCooldown) {
+      Log.d(
+        'PacketHandler',
+        'Skipping duplicate TreeKEM onboarding for $senderId in $roomName (cooldown active).',
+      );
+      return;
+    }
+
+    _onboardingInFlight.add(onboardingToken);
 
     try {
       Log.i(
@@ -347,8 +380,11 @@ class PacketHandler {
 
       await _broadcast(roomName, updatePacket);
       Log.i('PacketHandler', 'Broadcasted TreeKEM UPDATE for new member.');
+      recentRoomMap[keyFingerprint] = DateTime.now();
     } catch (e) {
       Log.e('PacketHandler', 'Failed to onboard member', e);
+    } finally {
+      _onboardingInFlight.remove(onboardingToken);
     }
   }
 
@@ -497,19 +533,8 @@ class PacketHandler {
         // C: Buffer if GSK needed
         // Buffering if isGskPacketType and decryption failed (either due to missing key or MAC error)
         if (!decrypted && isGskPacketType) {
-          Log.d(
-            'PacketHandler',
-            'Buffering packet type ${packet.type} awaiting valid GSK for $roomName',
-          );
-          _packetsAwaitingGsk.putIfAbsent(roomName, () => []);
-          _packetsAwaitingGsk[roomName]!.add((packet, pubKey));
-
-          // Proactively request sync (which triggers GSK sharing from
-          // the peer) so buffered packets can eventually be replayed.
-          final group = _groupManager.findGroup(roomName);
-          if (group.isEmpty || group['isInviteRoom'] != 'true') {
-            _syncProtocol.requestSync(roomName);
-          }
+          _bufferPacketAwaitingGsk(roomName, packet, pubKey);
+          _maybeTriggerGskRecovery(roomName);
           return false;
         }
       }
@@ -535,17 +560,10 @@ class PacketHandler {
         if (isGskPacketType) {
           Log.w(
             'PacketHandler',
-            'Buffering packet type ${packet.type} due to MAC error ($e) - awaiting correct GSK for $roomName. Triggering re-sync.',
+            'MAC mismatch for ${packet.type} in $roomName. Buffering and requesting key recovery.',
           );
-          _packetsAwaitingGsk.putIfAbsent(roomName, () => []);
-          _packetsAwaitingGsk[roomName]!.add((packet, pubKey));
-
-          // Trigger Handshake/Sync to fetch latest keys (might have missed Update/Welcome after sleep)
-          _handshakeHandler.requestHandshake(roomName, force: true);
-          final group = _groupManager.findGroup(roomName);
-          if (group.isEmpty || group['isInviteRoom'] != 'true') {
-            _syncProtocol.requestSync(roomName);
-          }
+          _bufferPacketAwaitingGsk(roomName, packet, pubKey);
+          _maybeTriggerGskRecovery(roomName, forceHandshake: true);
         }
         return false;
       }
@@ -744,8 +762,63 @@ class PacketHandler {
     await _packetStore.savePacket(roomName, stored);
   }
 
+  void _bufferPacketAwaitingGsk(
+    String roomName,
+    P2PPacket packet,
+    List<int> pubKey,
+  ) {
+    final packetId = _bufferedPacketId(packet);
+    final idSet = _bufferedGskPacketIds.putIfAbsent(roomName, () => <String>{});
+    if (idSet.contains(packetId)) {
+      return;
+    }
+
+    final queue = _packetsAwaitingGsk.putIfAbsent(roomName, () => []);
+    if (queue.length >= _maxBufferedGskPacketsPerRoom) {
+      final removed = queue.removeAt(0);
+      idSet.remove(_bufferedPacketId(removed.$1));
+      Log.w(
+        'PacketHandler',
+        'GSK buffer full for $roomName. Dropping oldest buffered packet.',
+      );
+    }
+
+    queue.add((packet, pubKey));
+    idSet.add(packetId);
+    Log.d(
+      'PacketHandler',
+      'Buffering packet type ${packet.type} awaiting valid GSK for $roomName (queue: ${queue.length})',
+    );
+  }
+
+  void _maybeTriggerGskRecovery(
+    String roomName, {
+    bool forceHandshake = false,
+  }) {
+    final now = DateTime.now();
+    final last = _lastGskRecoveryAttempt[roomName];
+    if (last != null && now.difference(last) < _gskRecoveryCooldown) {
+      return;
+    }
+    _lastGskRecoveryAttempt[roomName] = now;
+
+    final group = _groupManager.findGroup(roomName);
+    final isInviteRoom = group.isNotEmpty && group['isInviteRoom'] == 'true';
+    if (forceHandshake) {
+      _handshakeHandler.requestHandshake(roomName, force: true);
+    }
+    if (!isInviteRoom) {
+      _syncProtocol.requestSync(roomName);
+    }
+  }
+
+  String _bufferedPacketId(P2PPacket packet) {
+    return '${packet.type.value}:${packet.senderId}:${packet.requestId}';
+  }
+
   Future<void> _replayBufferedPackets(String roomName) async {
     final buffered = _packetsAwaitingGsk.remove(roomName);
+    _bufferedGskPacketIds.remove(roomName);
     if (buffered != null) {
       for (final (packet, pubKey) in buffered) {
         await _processVerifiedPacket(roomName, packet, pubKey);

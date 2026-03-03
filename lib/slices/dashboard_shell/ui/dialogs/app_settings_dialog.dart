@@ -55,6 +55,24 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
     );
   }
 
+  GroupNotificationSettings _syncAllFlag(GroupNotificationSettings settings) {
+    final allEnabled =
+        settings.newTasks &&
+        settings.completedTasks &&
+        settings.calendarEvents &&
+        settings.vaultItems &&
+        settings.chatMessages &&
+        settings.chatDirectMentions &&
+        settings.chatRoleMentions &&
+        settings.chatEveryoneMentions &&
+        settings.newPolls &&
+        settings.closedPolls &&
+        settings.pollVotes &&
+        settings.memberJoined &&
+        settings.memberLeft;
+    return settings.copyWith(allNotifications: allEnabled);
+  }
+
   @override
   Widget build(BuildContext context) {
     final groupSettingsAsync = ref.watch(groupSettingsProvider);
@@ -187,8 +205,8 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
                         subtitle: 'When someone adds a task to this group.',
                         value: _notificationSettings.newTasks,
                         onChanged: (value) async {
-                          final next = _notificationSettings.copyWith(
-                            newTasks: value,
+                          final next = _syncAllFlag(
+                            _notificationSettings.copyWith(newTasks: value),
                           );
                           setState(() {
                             _notificationSettings = next;
@@ -206,8 +224,10 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
                         subtitle: 'When tasks are marked complete.',
                         value: _notificationSettings.completedTasks,
                         onChanged: (value) async {
-                          final next = _notificationSettings.copyWith(
-                            completedTasks: value,
+                          final next = _syncAllFlag(
+                            _notificationSettings.copyWith(
+                              completedTasks: value,
+                            ),
                           );
                           setState(() {
                             _notificationSettings = next;
@@ -225,8 +245,10 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
                         subtitle: 'When new events are added.',
                         value: _notificationSettings.calendarEvents,
                         onChanged: (value) async {
-                          final next = _notificationSettings.copyWith(
-                            calendarEvents: value,
+                          final next = _syncAllFlag(
+                            _notificationSettings.copyWith(
+                              calendarEvents: value,
+                            ),
                           );
                           setState(() {
                             _notificationSettings = next;
@@ -244,8 +266,8 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
                         subtitle: 'When new items are stored.',
                         value: _notificationSettings.vaultItems,
                         onChanged: (value) async {
-                          final next = _notificationSettings.copyWith(
-                            vaultItems: value,
+                          final next = _syncAllFlag(
+                            _notificationSettings.copyWith(vaultItems: value),
                           );
                           setState(() {
                             _notificationSettings = next;
@@ -263,8 +285,72 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
                         subtitle: 'When someone posts a new message.',
                         value: _notificationSettings.chatMessages,
                         onChanged: (value) async {
-                          final next = _notificationSettings.copyWith(
-                            chatMessages: value,
+                          final next = _syncAllFlag(
+                            _notificationSettings.copyWith(chatMessages: value),
+                          );
+                          setState(() {
+                            _notificationSettings = next;
+                          });
+                          await _saveNotificationSettings(
+                            resolvedSettings,
+                            userKey,
+                            next,
+                          );
+                        },
+                      ),
+                      _buildNotificationToggle(
+                        context,
+                        title: '@You Mentions',
+                        subtitle: 'Notify when someone mentions you directly.',
+                        value: _notificationSettings.chatDirectMentions,
+                        onChanged: (value) async {
+                          final next = _syncAllFlag(
+                            _notificationSettings.copyWith(
+                              chatDirectMentions: value,
+                            ),
+                          );
+                          setState(() {
+                            _notificationSettings = next;
+                          });
+                          await _saveNotificationSettings(
+                            resolvedSettings,
+                            userKey,
+                            next,
+                          );
+                        },
+                      ),
+                      _buildNotificationToggle(
+                        context,
+                        title: '@Role Mentions',
+                        subtitle: 'Notify when your roles are mentioned.',
+                        value: _notificationSettings.chatRoleMentions,
+                        onChanged: (value) async {
+                          final next = _syncAllFlag(
+                            _notificationSettings.copyWith(
+                              chatRoleMentions: value,
+                            ),
+                          );
+                          setState(() {
+                            _notificationSettings = next;
+                          });
+                          await _saveNotificationSettings(
+                            resolvedSettings,
+                            userKey,
+                            next,
+                          );
+                        },
+                      ),
+                      _buildNotificationToggle(
+                        context,
+                        title: '@everyone / @here',
+                        subtitle:
+                            'Notify when broadcast mentions are used in chat.',
+                        value: _notificationSettings.chatEveryoneMentions,
+                        onChanged: (value) async {
+                          final next = _syncAllFlag(
+                            _notificationSettings.copyWith(
+                              chatEveryoneMentions: value,
+                            ),
                           );
                           setState(() {
                             _notificationSettings = next;
@@ -282,8 +368,8 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
                         subtitle: 'When a new poll is created.',
                         value: _notificationSettings.newPolls,
                         onChanged: (value) async {
-                          final next = _notificationSettings.copyWith(
-                            newPolls: value,
+                          final next = _syncAllFlag(
+                            _notificationSettings.copyWith(newPolls: value),
                           );
                           setState(() {
                             _notificationSettings = next;
@@ -301,8 +387,8 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
                         subtitle: 'When polls close or expire.',
                         value: _notificationSettings.closedPolls,
                         onChanged: (value) async {
-                          final next = _notificationSettings.copyWith(
-                            closedPolls: value,
+                          final next = _syncAllFlag(
+                            _notificationSettings.copyWith(closedPolls: value),
                           );
                           setState(() {
                             _notificationSettings = next;
@@ -320,8 +406,8 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
                         subtitle: 'When new votes are cast.',
                         value: _notificationSettings.pollVotes,
                         onChanged: (value) async {
-                          final next = _notificationSettings.copyWith(
-                            pollVotes: value,
+                          final next = _syncAllFlag(
+                            _notificationSettings.copyWith(pollVotes: value),
                           );
                           setState(() {
                             _notificationSettings = next;
@@ -339,8 +425,8 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
                         subtitle: 'When someone joins this group.',
                         value: _notificationSettings.memberJoined,
                         onChanged: (value) async {
-                          final next = _notificationSettings.copyWith(
-                            memberJoined: value,
+                          final next = _syncAllFlag(
+                            _notificationSettings.copyWith(memberJoined: value),
                           );
                           setState(() {
                             _notificationSettings = next;
@@ -358,8 +444,8 @@ class _AppSettingsDialogState extends ConsumerState<AppSettingsDialog> {
                         subtitle: 'When someone leaves this group.',
                         value: _notificationSettings.memberLeft,
                         onChanged: (value) async {
-                          final next = _notificationSettings.copyWith(
-                            memberLeft: value,
+                          final next = _syncAllFlag(
+                            _notificationSettings.copyWith(memberLeft: value),
                           );
                           setState(() {
                             _notificationSettings = next;
