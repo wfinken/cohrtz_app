@@ -9,7 +9,7 @@ Security is layered: packet signing, encrypted transport, encrypted payloads, an
 ## Major Runtime Components
 
 - UI and state orchestration
-  - Flutter + Riverpod providers (`lib/app/di/`)
+  - Flutter + Riverpod providers (cross-cutting wiring in `lib/app/di/`, slice-owned providers colocated under `lib/slices/*/state/`)
   - Vertical slices in `lib/slices/*`
 - Local data plane
   - `CrdtService` (native/web variant)

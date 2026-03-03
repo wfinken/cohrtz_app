@@ -6,6 +6,8 @@
 - `lib/app/main_app.dart`
 - `lib/app/di/app_providers.dart`
 - `lib/app/di/providers/*`
+- `lib/slices/notes/state/note_repository_provider.dart`
+- `lib/slices/notes/state/notes_list_provider.dart`
 
 ## Sync Runtime and Orchestration
 

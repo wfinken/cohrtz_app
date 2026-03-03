@@ -5,6 +5,8 @@ It is both:
 - Descriptive: documents current behavior in the repository.
 - Normative: defines required compatibility, security, and migration rules for future changes.
 
+Last validated against repository code on **2026-03-03**.
+
 ## Scope
 
 This set covers:
@@ -41,6 +43,7 @@ Outside this window, behavior is best-effort and may be degraded.
 10. [Testing and Validation](./testing-and-validation.md)
 11. [Glossary](./appendix/glossary.md)
 12. [Code Index](./appendix/code-index.md)
+13. [CRDT Migration Plan](./crdt-migration-plan.md)
 
 ## Normative Language
 
@@ -59,6 +62,7 @@ The following keywords are used with RFC-style meaning:
 - Wire messages use protobuf `P2PPacket` and are signed per-packet.
 - Group sync uses election-based responder selection and vector clock diffs.
 - Group settings, roles, and members include explicit migration and compatibility handling in runtime paths.
+- Providers are split between cross-cutting app DI wiring and slice-local providers where feature ownership is clear.
 
 ## Future Documentation Candidates
 

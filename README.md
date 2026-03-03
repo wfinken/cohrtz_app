@@ -6,7 +6,7 @@ Cohrtz is a privacy-first, local-centric "Super App" designed for micro-communit
 
 ## 🚀 Core Philosophy
 
-- **Local-First & Serverless**: Data lives on your device, stored in a local **encrypted database (SQLCipher)** via `sqlite_crdt`. There is no central "Master" database holding your secrets. We trust your hardware, not our servers.
+- **Local-First & Serverless**: Data lives on your device in local CRDT-backed SQLite storage via `sql_crdt` and Drift adapters. There is no central "Master" database holding your secrets. We trust your hardware, not our servers.
 - **P2P Synchronization via LiveKit**: We utilize LiveKit strictly as a high-speed transport layer (SFU/Mesh relay). Data is synchronized directly between peers using WebRTC Data Channels, CRDTs, and Delta Encoding.
 - **Hybrid Sovereignty**: While the Data Plane is peer-to-peer and self-sovereign, we maintain a lightweight "Mothership" (Control Plane) concept for future essential services like payment verification, though currently, the system operates without mandatory login.
 
@@ -16,7 +16,6 @@ The UI is built around a modular "Bento Box" grid system that adapts its vocabul
 
 - **📊 Polls**: Create and participate in real-time group polls with synchronized results.
 - **🔐 Permissions**: Granular, role-based access control for widgets and group actions.
-- **📍 Location (The Beacon)**: Real-time, opt-in location sharing.
 - **📅 Calendar (The Prophecies)**: Shared events synchronized via Vector Clocks to handle offline edits.
 - **🛡️ The Vault**: End-to-End Encrypted (AES-GCM) storage for credentials and sensitive docs, utilizing room-specific keys derived via **X25519**.
 - **✅ Tasks**: CRDT-backed to-do lists that survive offline edits.
@@ -33,7 +32,7 @@ Cohrtz bypasses traditional REST APIs for data storage. Every client is a databa
 - **Topology**: Star Topology via LiveKit SFU, functionally acting as a P2P Mesh resource.
 - **Transport**: WebRTC Data Channels (Reliable/Ordered).
 - **Serialization**: Protocol Buffers (Protobuf) for all wire traffic.
-- **Conflict Resolution**: Conflict-free Replicated Data Types (CRDTs) ensure eventual consistency using `sqlite_crdt`.
+- **Conflict Resolution**: Conflict-free Replicated Data Types (CRDTs) ensure eventual consistency using `sql_crdt`.
 
 ### The "Volunteer" Election & Secure Unicast Sync
 To prevent bandwidth storms and enhance privacy, Cohrtz implements a **Secure Multicast-to-Unicast** sync protocol:
@@ -75,7 +74,7 @@ Here is exactly how we implement the security stack:
 -   **Properties**: This ensures Confidentiality, Integrity, and Authenticity of the *channel* between peers (or peer-to-SFU).
 
 #### 3. Data-at-Rest
--   **Database**: Data is stored using **SQLCipher** for full-disk encryption on native platforms.
+-   **Database**: Native CRDT databases are opened through `EncryptedSqliteCrdt`, which applies `PRAGMA key` using a device-generated key stored in secure storage.
 -   **Key Management**: The database encryption key is generated locally using high-entropy random bytes and stored securely in the platform's **Secure Storage**.
 -   **Encryption**: Peer identity keys (Ed25519) and encryption keys (X25519) are stored securely.
 -   **Isolation**: On Mobile (iOS/Android), app sandboxing isolates the data from other apps.
@@ -112,7 +111,7 @@ Here is exactly how we implement the security stack:
 
 - **Frontend**: Flutter (Dart)
 - **State**: Riverpod
-- **Local DB**: sqlite_crdt / Isar
+- **Local DB**: `sql_crdt` + Drift + `sqlite3`
 - **Network**: LiveKit (WebRTC)
 - **Protocol**: Protobuf
 
@@ -120,6 +119,9 @@ Here is exactly how we implement the security stack:
 
 - Run unit/widget tests:
   - `flutter test`
+- Run backend connect smoke test (single client):
+  - Required defines: `COHRTZ_E2E_ENABLED`, `COHRTZ_E2E_ROOM`, `COHRTZ_E2E_IDENTITY`
+  - `flutter test integration_test/e2e/backend_connect_smoke_test.dart --dart-define=COHRTZ_E2E_ENABLED=true --dart-define=COHRTZ_E2E_ROOM=<room> --dart-define=COHRTZ_E2E_IDENTITY=<identity>`
 - Two-client backend E2E smoke prerequisites:
   - Requires a reachable token endpoint (`/token`) and LiveKit backend.
   - The test dynamically creates the configured number of clients and identities in one generated room.
