@@ -2768,7 +2768,7 @@ class _ChatWidgetState extends ConsumerState<ChatWidget> {
           id: 'acl:${group.id}',
           label: '@${group.name}',
           insertText: '@$handle',
-          subtitle: 'ACL group',
+          subtitle: 'Group',
           icon: Icons.group_work_outlined,
         ),
       );
@@ -3683,9 +3683,9 @@ class _CreateChannelDialogState extends State<_CreateChannelDialog> {
           ),
           SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Create ACL rooms'),
+            title: const Text('Create group rooms'),
             subtitle: const Text(
-              'Create one room per selected ACL group (excludes Everyone).',
+              'Create one room per selected group (excludes Everyone).',
             ),
             value: _createPerAclGroup,
             onChanged: hasSpecificAclSelection
