@@ -54,7 +54,7 @@ Unsigned or invalid packets are dropped.
 
 ## Local Data-at-Rest
 
-- Native CRDT database uses SQLCipher key via `PRAGMA key` when opening CRDT DB.
+- Native CRDT database applies `PRAGMA key` when opening the CRDT DB in `EncryptedSqliteCrdt`.
 - Device DB key is generated and stored in secure storage under `device_db_key`.
 - Secure storage values are envelope-encrypted before backend write.
 - Native secure backend stores encrypted blobs in local SQLite table `secure_blobs`.

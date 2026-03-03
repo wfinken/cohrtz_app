@@ -14,7 +14,27 @@ This document maps critical behaviors to current test coverage and defines manda
 | Invite protocol behavior | `test/features/sync/application/invite_handler_test.dart` |
 | Note repository semantics | `test/features/notes/note_repository_test.dart` |
 | Model backward compatibility defaults | `test/slices/dashboard_shell/models/profile_serialization_test.dart` |
-| Two-client sync convergence (integration) | `integration_test/e2e/two_client_smoke_test.dart` |
+| Multi-client sync convergence (integration) | `integration_test/e2e/two_client_smoke_test.dart` |
+
+## Integration Test Runtime Requirements
+
+The integration smoke suite requires a reachable token endpoint and LiveKit backend.
+
+- Backend connect smoke (`integration_test/e2e/backend_connect_smoke_test.dart`):
+  - `COHRTZ_E2E_ENABLED=true`
+  - `COHRTZ_E2E_ROOM=<room>`
+  - `COHRTZ_E2E_IDENTITY=<identity>`
+  - Example:
+    - `flutter test integration_test/e2e/backend_connect_smoke_test.dart --dart-define=COHRTZ_E2E_ENABLED=true --dart-define=COHRTZ_E2E_ROOM=<room> --dart-define=COHRTZ_E2E_IDENTITY=<identity>`
+
+- Multi-client convergence smoke (`integration_test/e2e/two_client_smoke_test.dart`):
+  - Required defines:
+    - `COHRTZ_E2E_ENABLED=true`
+    - `COHRTZ_E2E_USER_COUNT=<count>` where `<count> >= 2`
+  - Optional define:
+    - `COHRTZ_E2E_ROOM_PREFIX=<prefix>` (default `cohrtz-e2e`)
+  - Example:
+    - `flutter test integration_test/e2e/two_client_smoke_test.dart --dart-define=COHRTZ_E2E_ENABLED=true --dart-define=COHRTZ_E2E_USER_COUNT=2`
 
 ## Known Gaps and Risks
 

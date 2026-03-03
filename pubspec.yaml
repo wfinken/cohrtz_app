@@ -1,5 +1,8 @@
 name: cohortz
-description: "A new Flutter project."
+description: "Privacy-first local-first Flutter app for small groups."
+repository: https://github.com/wfinken/cohrtz_app
+homepage: https://github.com/wfinken/cohrtz_app
+issue_tracker: https://github.com/wfinken/cohrtz_app/issues
 publish_to: 'none'
 version: 0.1.0
 
@@ -17,17 +20,16 @@ dependencies:
   uuid: ^4.4.0
   cryptography: ^2.9.0
   path_provider: ^2.1.5
-  sqlite3: any
+  sqlite3: ^2.9.4
   sql_crdt: ^3.0.3
-  drift: any
-  drift_crdt: any
-  sqlite3_flutter_libs: ^0.5.24
+  drift: ^2.28.2
+  drift_crdt: ^1.0.11
+  sqlite3_flutter_libs: ^0.5.41
   http: ^1.6.0
   path: ^1.9.0
   shared_preferences: ^2.5.3
   intl: ^0.20.2
   google_fonts: ^6.1.0
-  dotted_border: 3.1.0
   table_calendar: ^3.1.0
   flutter_local_notifications: ^18.0.1
   # Security packages
@@ -48,7 +50,9 @@ dev_dependencies:
   flutter_lints: ^5.0.0
   build_runner: ^2.4.13
   dart_mappable_builder: ^4.2.0
-  drift_dev: ^2.20.0
+  drift_dev: ^2.28.3
+  sqflite_common_ffi: ^2.3.7+1
+  sqlite_crdt: ^3.0.4
 
 flutter:
   uses-material-design: true
