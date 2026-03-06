@@ -1,13 +1,15 @@
+// This is a generated file - do not edit.
 //
-//  Generated code. Do not modify.
-//  source: p2p_packet.proto
-//
-// @dart = 2.12
+// Generated from p2p_packet.proto.
+
+// @dart = 3.3
 
 // ignore_for_file: annotate_overrides, camel_case_types, comment_references
-// ignore_for_file: constant_identifier_names, library_prefixes
-// ignore_for_file: non_constant_identifier_names, prefer_final_fields
-// ignore_for_file: unnecessary_import, unnecessary_this, unused_import
+// ignore_for_file: constant_identifier_names
+// ignore_for_file: curly_braces_in_flow_control_structures
+// ignore_for_file: deprecated_member_use_from_same_package, library_prefixes
+// ignore_for_file: non_constant_identifier_names, prefer_relative_imports
+// ignore_for_file: unused_import
 
 import 'dart:convert' as $convert;
 import 'dart:core' as $core;
@@ -54,6 +56,8 @@ const P2PPacket$json = {
       '5': 12,
       '10': 'senderPublicKey'
     },
+    {'1': 'physical_time', '3': 13, '4': 1, '5': 3, '10': 'physicalTime'},
+    {'1': 'logical_time', '3': 14, '4': 1, '5': 3, '10': 'logicalTime'},
   ],
   '4': [P2PPacket_PacketType$json],
 };
@@ -84,8 +88,9 @@ final $typed_data.Uint8List p2PPacketDescriptor = $convert.base64Decode(
     'bmtfaW5kZXgYByABKAVSCmNodW5rSW5kZXgSIgoNaXNfbGFzdF9jaHVuaxgIIAEoCFILaXNMYX'
     'N0Q2h1bmsSGwoJdGFyZ2V0X2lkGAkgASgJUgh0YXJnZXRJZBIcCgllbmNyeXB0ZWQYCiABKAhS'
     'CWVuY3J5cHRlZBIyChVlbmNyeXB0aW9uX3B1YmxpY19rZXkYCyABKAxSE2VuY3J5cHRpb25QdW'
-    'JsaWNLZXkSKgoRc2VuZGVyX3B1YmxpY19rZXkYDCABKAxSD3NlbmRlclB1YmxpY0tleSKzAQoK'
-    'UGFja2V0VHlwZRIMCghTWU5DX1JFURAAEg4KClNZTkNfQ0xBSU0QARIOCgpEQVRBX0NIVU5LEA'
-    'ISDQoJSEFORFNIQUtFEAMSFQoRQ09OU0lTVEVOQ1lfQ0hFQ0sQBBIOCgpJTlZJVEVfUkVREAUS'
-    'DgoKSU5WSVRFX0FDSxAGEg8KC0lOVklURV9OQUNLEAcSDwoLVU5JQ0FTVF9SRVEQCBIPCgtVTk'
-    'lDQVNUX0FDSxAJ');
+    'JsaWNLZXkSKgoRc2VuZGVyX3B1YmxpY19rZXkYDCABKAxSD3NlbmRlclB1YmxpY0tleRIjCg1w'
+    'aHlzaWNhbF90aW1lGA0gASgDUgxwaHlzaWNhbFRpbWUSIQoMbG9naWNhbF90aW1lGA4gASgDUg'
+    'tsb2dpY2FsVGltZSKzAQoKUGFja2V0VHlwZRIMCghTWU5DX1JFURAAEg4KClNZTkNfQ0xBSU0Q'
+    'ARIOCgpEQVRBX0NIVU5LEAISDQoJSEFORFNIQUtFEAMSFQoRQ09OU0lTVEVOQ1lfQ0hFQ0sQBB'
+    'IOCgpJTlZJVEVfUkVREAUSDgoKSU5WSVRFX0FDSxAGEg8KC0lOVklURV9OQUNLEAcSDwoLVU5J'
+    'Q0FTVF9SRVEQCBIPCgtVTklDQVNUX0FDSxAJ');
