@@ -150,7 +150,7 @@ class AppNotificationService extends ChangeNotifier
       linux: linuxSettings,
     );
 
-    await _plugin.initialize(settings);
+    await _plugin.initialize(settings: settings);
     _log('plugin initialize() completed.');
 
     final androidPlugin = _plugin
@@ -399,7 +399,7 @@ class AppNotificationService extends ChangeNotifier
     );
 
     try {
-      await _plugin.show(notificationId, title, body, details);
+      await _plugin.show(id: notificationId, title: title, body: body, notificationDetails: details);
       _log('show succeeded (#$notificationId): "$title"');
     } catch (error, stackTrace) {
       _log('show failed (#$notificationId): $error');
